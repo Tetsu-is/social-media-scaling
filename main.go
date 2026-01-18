@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -23,6 +24,13 @@ type User struct {
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type UserAuth struct {
+	UserID         string    `json:"-"` // 外に出さない予定だけど念の為パースできないように
+	HashedPassword string    `json:"-"`
+	CreatedAt      time.Time `json:"-"`
+	UpdatedAt      time.Time `json:"-"`
 }
 
 // ============================================
@@ -63,7 +71,6 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// TODO: パスワードハッシュ化
 		p := []byte(req.Password)
 		hashedPassword, err := bcrypt.GenerateFromPassword(p, 10)
 		if err != nil {
@@ -110,16 +117,104 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// TODO: JWT トークン生成
-		token := "dummy-token"
+		// JWT トークン生成
+		claims := jwt.MapClaims{
+			"user_id": id,
+			"exp":     time.Now().Add(time.Hour * 24).Unix(),
+			"iat":     time.Now().Unix(),
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		secretKey := []byte("secretKey")
+		tokenString, _ := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
 
 		resp := SignupResponse{
 			User:  &user,
-			Token: token,
+			Token: tokenString,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+type LoginRequest struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	User  *User  `json:"user"`
+	Token string `json:"token"`
+}
+
+func loginHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// parse request data
+		var req LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Name == "" || req.Password == "" {
+			http.Error(w, "name and password are required", http.StatusBadRequest)
+			return
+		}
+
+		// check if there is a user data
+		var user User
+		err := conn.QueryRow(ctx,
+			"SELECT id, name, created_at, updated_at FROM users WHERE name = $1",
+			req.Name,
+		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "user not found", http.StatusBadRequest)
+			return
+		} else if err != nil {
+			http.Error(w, "db error", http.StatusInternalServerError)
+			return
+		}
+
+		// check if the password match with one in db
+		var userAuth UserAuth
+		err = conn.QueryRow(ctx,
+			"SELECT user_id, hashed_password, created_at, updated_at from user_auth WHERE user_id = $1",
+			user.ID,
+		).Scan(&userAuth.UserID, &userAuth.HashedPassword, &userAuth.CreatedAt, &userAuth.UpdatedAt)
+		if err != nil {
+			// userは見つかったのに認証情報がないのはサインアップのトランザクションに不具合の可能性あるかも
+			http.Error(w, "failed to find auth data", http.StatusInternalServerError)
+			return
+		}
+
+		err = bcrypt.CompareHashAndPassword([]byte(userAuth.HashedPassword), []byte(req.Password))
+		if err != nil {
+			http.Error(w, "fail to match password", http.StatusUnauthorized)
+			return
+		}
+
+		// JWT トークン生成
+		claims := jwt.MapClaims{
+			"user_id": user.ID,
+			"exp":     time.Now().Add(time.Hour * 24).Unix(),
+			"iat":     time.Now().Unix(),
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		secretKey := []byte("secretKey")
+		tokenString, _ := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
+
+		resp := LoginResponse{
+			User:  &user,
+			Token: tokenString,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 	}
 }
@@ -152,6 +247,7 @@ func main() {
 	})
 
 	r.Post("/auth/signup", signupHandler(conn))
+	r.Post("/auth/login", loginHandler(conn))
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)

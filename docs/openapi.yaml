@@ -60,6 +60,135 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /auth/signup:
+    post:
+      summary: Sign up
+      description: Register a new user account
+      operationId: signup
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request or username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: Login
+      description: Authenticate user and return access token
+      operationId: login
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      summary: Logout
+      description: Invalidate the current access token
+      operationId: logout
+      tags:
+        - auth
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /me:
+    get:
+      summary: Get current user
+      description: Retrieve the authenticated user's information
+      operationId: getMe
+      tags:
+        - me
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Update current user
+      description: Update the authenticated user's information
+      operationId: updateMe
+      tags:
+        - me
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /users/{id}:
     get:
       summary: Get user
@@ -87,6 +216,12 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     User:
       type: object
@@ -95,34 +230,75 @@ components:
           type: integer
           format: int64
           example: 1
-        username:
+        name:
           type: string
           example: johndoe
-        email:
-          type: string
-          format: email
-          example: john@example.com
         created_at:
           type: string
           format: date-time
       required:
         - id
-        - username
-        - email
+        - name
 
     CreateUserRequest:
       type: object
       properties:
-        username:
+        name:
           type: string
           example: johndoe
-        email:
+        password:
           type: string
-          format: email
-          example: john@example.com
+          example: password
       required:
-        - username
-        - email
+        - name
+        - password
+
+    SignupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: johndoe
+        password:
+          type: string
+          format: password
+          example: secretpass123
+      required:
+        - name
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: johndoe
+        password:
+          type: string
+          format: password
+          example: secretpass123
+      required:
+        - name
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      required:
+        - user
+        - token
+
+    UpdateMeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: johndoe_updated
 
     Error:
       type: object

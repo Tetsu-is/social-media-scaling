@@ -47,6 +47,19 @@ type ErrorResponse struct {
 // Handler
 // ============================================
 
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, err := validateToken(r)
+		if err != nil {
+			respondError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userIDKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 type SignupRequest struct {
 	Name     string `json:"name"`
 	Password string `json:"password"`
@@ -276,44 +289,49 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		tokenString := r.Header.Get("Authorization")
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		if tokenString == "" {
-			respondError(w, http.StatusUnauthorized, "token is not set")
-			return
-		}
+		// tokenString := r.Header.Get("Authorization")
+		// tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		// if tokenString == "" {
+		// 	respondError(w, http.StatusUnauthorized, "token is not set")
+		// 	return
+		// }
 
-		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method")
-			}
+		// token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
+		// 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		// 		return nil, errors.New("unexpected signing method")
+		// 	}
 
-			return []byte("secretKey"), nil
-		})
-		if err != nil {
-			respondError(w, http.StatusUnauthorized, "invalid token")
-			return
-		}
+		// 	return []byte("secretKey"), nil
+		// })
+		// if err != nil {
+		// 	respondError(w, http.StatusUnauthorized, "invalid token")
+		// 	return
+		// }
 
-		if !token.Valid {
-			respondError(w, http.StatusUnauthorized, "invalid token")
-			return
-		}
+		// if !token.Valid {
+		// 	respondError(w, http.StatusUnauthorized, "invalid token")
+		// 	return
+		// }
 
-		claims, ok := token.Claims.(jwt.MapClaims)
+		// claims, ok := token.Claims.(jwt.MapClaims)
+		// if !ok {
+		// 	respondError(w, http.StatusUnauthorized, "invalid claims")
+		// 	return
+		// }
+
+		// userID, ok := claims["user_id"].(string)
+		// if !ok {
+		// 	respondError(w, http.StatusUnauthorized, "user_id not found in token")
+		// 	return
+		// }
+		userID, ok := r.Context().Value(userIDKey).(string)
 		if !ok {
-			respondError(w, http.StatusUnauthorized, "invalid claims")
-			return
-		}
-
-		userID, ok := claims["user_id"].(string)
-		if !ok {
-			respondError(w, http.StatusUnauthorized, "user_id not found in token")
+			respondError(w, http.StatusInternalServerError, "unable to load user")
 			return
 		}
 
 		var user User
-		err = conn.QueryRow(
+		err := conn.QueryRow(
 			ctx,
 			"SELECT id, name, created_at, updated_at FROM users WHERE id = $1",
 			userID,
@@ -384,18 +402,22 @@ func main() {
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 	}))
 
-	// Routes
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello chi!"))
+	// PublicRoutes
+	r.Group(func(r chi.Router) {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello chi!"))
+		})
+		r.Post("/auth/signup", signupHandler(conn))
+		r.Post("/auth/login", loginHandler(conn))
+		r.Get("/users/{userID}", getUserByIDHandler(conn))
 	})
 
-	r.Post("/auth/signup", signupHandler(conn))
-	r.Post("/auth/login", loginHandler(conn))
-	r.Post("/auth/logout", logoutHandler(conn))
-
-	r.Get("/me", getMeHandler(conn))
-
-	r.Get("/users/{userID}", getUserByIDHandler(conn))
+	// PrivateRoutes(need token)
+	r.Group(func(r chi.Router) {
+		r.Use(AuthMiddleware)
+		r.Post("/auth/logout", logoutHandler(conn))
+		r.Get("/me", getMeHandler(conn))
+	})
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)
@@ -404,6 +426,45 @@ func main() {
 // ============================================
 // Utils
 // ============================================
+
+type contextKey string
+
+const userIDKey contextKey = "userID"
+
+func validateToken(r *http.Request) (string, error) {
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		return "", errors.New("token is not set")
+	}
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+
+		return []byte("secretKey"), nil
+	})
+	if err != nil {
+		return "", errors.New("invalid token")
+	}
+
+	if !token.Valid {
+		return "", errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", errors.New("invalid token")
+	}
+
+	userID, ok := claims["user_id"].(string)
+	if !ok {
+		return "", errors.New("user_id is not found in token")
+	}
+
+	return userID, nil
+}
 
 func respondError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")

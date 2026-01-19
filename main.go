@@ -38,6 +38,11 @@ type UserAuth struct {
 	UpdatedAt      time.Time `json:"-"`
 }
 
+type ErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
 // ============================================
 // Handler
 // ============================================
@@ -59,35 +64,33 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 		// リクエストパース
 		var req SignupRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
 		if req.Name == "" || req.Password == "" {
-			http.Error(w, "name and password are required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "name and password are required")
 			return
 		}
 
 		// ID採番 (UUID v7)
 		id, err := uuid.NewV7()
 		if err != nil {
-			log.Printf("failed to generate uuid: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
 		p := []byte(req.Password)
 		hashedPassword, err := bcrypt.GenerateFromPassword(p, 10)
 		if err != nil {
-			http.Error(w, "failed to hash pasword", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "failed to hash password")
 			return
 		}
 
 		// トランザクション開始
 		tx, err := conn.Begin(ctx)
 		if err != nil {
-			log.Printf("failed to begin transaction: %v", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		defer tx.Rollback(ctx)
@@ -102,15 +105,14 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			if pgErr, ok := err.(*pgconn.PgError); ok {
 				switch pgErr.Code {
 				case pgerrcode.UniqueViolation:
-					http.Error(w, "user name is already used", http.StatusBadRequest)
+					respondError(w, http.StatusBadRequest, "user name is already used")
 					return
 				default:
-					http.Error(w, "db err", http.StatusInternalServerError)
+					respondError(w, http.StatusInternalServerError, "database error")
 					return
 				}
 			}
-			log.Printf("failed to create user: %v", err)
-			http.Error(w, "failed to signup", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "failed to signup")
 			return
 		}
 
@@ -120,15 +122,13 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			id.String(), hashedPassword,
 		)
 		if err != nil {
-			log.Printf("failed to create user auth: %v", err)
-			http.Error(w, "failed to signup", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "failed to signup")
 			return
 		}
 
 		// コミット
 		if err := tx.Commit(ctx); err != nil {
-			log.Printf("failed to commit transaction: %v", err)
-			http.Error(w, "failed to signup", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "failed to signup")
 			return
 		}
 
@@ -162,12 +162,12 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 		// parse request data
 		var req LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
 		if req.Name == "" || req.Password == "" {
-			http.Error(w, "name and password are required", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "name and password are required")
 			return
 		}
 
@@ -178,10 +178,10 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 			req.Name,
 		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
 		if err == pgx.ErrNoRows {
-			http.Error(w, "user not found", http.StatusBadRequest)
+			respondError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		} else if err != nil {
-			http.Error(w, "db error", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
 
@@ -193,13 +193,13 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 		).Scan(&userAuth.UserID, &userAuth.HashedPassword, &userAuth.CreatedAt, &userAuth.UpdatedAt)
 		if err != nil {
 			// userは見つかったのに認証情報がないのはサインアップのトランザクションに不具合の可能性あるかも
-			http.Error(w, "failed to find auth data", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "failed to find auth data")
 			return
 		}
 
 		err = bcrypt.CompareHashAndPassword([]byte(userAuth.HashedPassword), []byte(req.Password))
 		if err != nil {
-			http.Error(w, "fail to match password", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 
@@ -233,7 +233,7 @@ func logoutHandler(conn *pgx.Conn) http.HandlerFunc {
 		tokenString := r.Header.Get("Authorization")
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		if tokenString == "" {
-			http.Error(w, "token is not set", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "token is not set")
 			return
 		}
 
@@ -245,18 +245,19 @@ func logoutHandler(conn *pgx.Conn) http.HandlerFunc {
 			return []byte("secretKey"), nil
 		})
 		if err != nil {
-			http.Error(w, "failed to parse jwt", http.StatusBadRequest)
+			respondError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
 		if !token.Valid {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			http.Error(w, "invalid claims", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "invalid claims")
+			return
 		}
 
 		// userID, ok := claims["user_id"].(string)
@@ -278,7 +279,7 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 		tokenString := r.Header.Get("Authorization")
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		if tokenString == "" {
-			http.Error(w, "token is not set", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "token is not set")
 			return
 		}
 
@@ -290,23 +291,24 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 			return []byte("secretKey"), nil
 		})
 		if err != nil {
-			http.Error(w, "failed to parse jwt", http.StatusBadRequest)
+			respondError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
 		if !token.Valid {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			http.Error(w, "invalid claims", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "invalid claims")
+			return
 		}
 
 		userID, ok := claims["user_id"].(string)
 		if !ok {
-			http.Error(w, "user_id not found in token", http.StatusUnauthorized)
+			respondError(w, http.StatusUnauthorized, "user_id not found in token")
 			return
 		}
 
@@ -317,11 +319,10 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 			userID,
 		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
 		if err == pgx.ErrNoRows {
-			http.Error(w, "user not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "user not found")
 			return
 		} else if err != nil {
-			http.Error(w, "err", http.StatusInternalServerError)
-			fmt.Println(err)
+			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
 
@@ -337,7 +338,7 @@ func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
 
 		userID := chi.URLParam(r, "userID")
 		if userID == "" {
-			http.Error(w, "cannot get user id from url", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "user id is required")
 			return
 		}
 
@@ -348,11 +349,10 @@ func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
 			userID,
 		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
 		if err == pgx.ErrNoRows {
-			http.Error(w, "user not found", http.StatusNotFound)
+			respondError(w, http.StatusNotFound, "user not found")
 			return
 		} else if err != nil {
-			http.Error(w, "err", http.StatusInternalServerError)
-			fmt.Println(err)
+			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
 
@@ -401,9 +401,18 @@ func main() {
 	http.ListenAndServe(":8080", r)
 }
 
-/// ============================================
+// ============================================
 // Utils
 // ============================================
+
+func respondError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(ErrorResponse{
+		Code:    code,
+		Message: message,
+	})
+}
 
 func generateToken(id string) string {
 	claims := jwt.MapClaims{

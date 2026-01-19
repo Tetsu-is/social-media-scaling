@@ -268,6 +268,66 @@ func logoutHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
+func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		tokenString := r.Header.Get("Authorization")
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		if tokenString == "" {
+			http.Error(w, "token is not set", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, errors.New("unexpected signing method")
+			}
+
+			return []byte("secretKey"), nil
+		})
+		if err != nil {
+			http.Error(w, "failed to parse jwt", http.StatusBadRequest)
+			return
+		}
+
+		if !token.Valid {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			http.Error(w, "invalid claims", http.StatusUnauthorized)
+		}
+
+		userID, ok := claims["user_id"].(string)
+		if !ok {
+			http.Error(w, "user_id not found in token", http.StatusUnauthorized)
+			return
+		}
+
+		var user User
+		err = conn.QueryRow(
+			ctx,
+			"SELECT id, name, created_at, updated_at FROM users WHERE id = $1",
+			userID,
+		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "err", http.StatusInternalServerError)
+			fmt.Println(err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(user)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -298,6 +358,8 @@ func main() {
 	r.Post("/auth/signup", signupHandler(conn))
 	r.Post("/auth/login", loginHandler(conn))
 	r.Post("/auth/logout", logoutHandler(conn))
+
+	r.Get("/me", getMeHandler(conn))
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)

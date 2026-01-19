@@ -14,7 +14,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -97,6 +99,16 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			id.String(), req.Name,
 		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
 		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok {
+				switch pgErr.Code {
+				case pgerrcode.UniqueViolation:
+					http.Error(w, "user name is already used", http.StatusBadRequest)
+					return
+				default:
+					http.Error(w, "db err", http.StatusInternalServerError)
+					return
+				}
+			}
 			log.Printf("failed to create user: %v", err)
 			http.Error(w, "failed to signup", http.StatusInternalServerError)
 			return
@@ -120,20 +132,11 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// JWT トークン生成
-		claims := jwt.MapClaims{
-			"user_id": id,
-			"exp":     time.Now().Add(time.Hour * 24).Unix(),
-			"iat":     time.Now().Unix(),
-		}
-
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		secretKey := []byte("secretKey")
-		tokenString, _ := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
+		token := generateToken(id.String())
 
 		resp := SignupResponse{
 			User:  &user,
-			Token: tokenString,
+			Token: token,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -396,4 +399,25 @@ func main() {
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)
+}
+
+/// ============================================
+// Utils
+// ============================================
+
+func generateToken(id string) string {
+	claims := jwt.MapClaims{
+		"user_id": id,
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
+		"iat":     time.Now().Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secretKey := []byte("secretKey")
+	tokenString, err := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
+	if err != nil {
+		fmt.Println("generateToken err", err)
+	}
+
+	return tokenString
 }

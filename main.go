@@ -289,41 +289,6 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// tokenString := r.Header.Get("Authorization")
-		// tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		// if tokenString == "" {
-		// 	respondError(w, http.StatusUnauthorized, "token is not set")
-		// 	return
-		// }
-
-		// token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		// 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-		// 		return nil, errors.New("unexpected signing method")
-		// 	}
-
-		// 	return []byte("secretKey"), nil
-		// })
-		// if err != nil {
-		// 	respondError(w, http.StatusUnauthorized, "invalid token")
-		// 	return
-		// }
-
-		// if !token.Valid {
-		// 	respondError(w, http.StatusUnauthorized, "invalid token")
-		// 	return
-		// }
-
-		// claims, ok := token.Claims.(jwt.MapClaims)
-		// if !ok {
-		// 	respondError(w, http.StatusUnauthorized, "invalid claims")
-		// 	return
-		// }
-
-		// userID, ok := claims["user_id"].(string)
-		// if !ok {
-		// 	respondError(w, http.StatusUnauthorized, "user_id not found in token")
-		// 	return
-		// }
 		userID, ok := r.Context().Value(userIDKey).(string)
 		if !ok {
 			respondError(w, http.StatusInternalServerError, "unable to load user")

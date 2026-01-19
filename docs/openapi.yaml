@@ -117,39 +117,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-    patch:
-      summary: Update current user
-      description: Update the authenticated user's information
-      operationId: updateMe
-      tags:
-        - me
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateMeRequest'
-      responses:
-        '200':
-          description: User updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /users/{id}:
     get:
@@ -244,13 +211,6 @@ components:
       required:
         - user
         - token
-
-    UpdateMeRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          example: johndoe_updated
 
     Error:
       type: object

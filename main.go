@@ -328,6 +328,37 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
+func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID := chi.URLParam(r, "userID")
+		if userID == "" {
+			http.Error(w, "cannot get user id from url", http.StatusBadRequest)
+			return
+		}
+
+		var user User
+		err := conn.QueryRow(
+			ctx,
+			"SELECT id, name, created_at, updated_at FROM users WHERE id = $1",
+			userID,
+		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "err", http.StatusInternalServerError)
+			fmt.Println(err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(user)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -360,6 +391,8 @@ func main() {
 	r.Post("/auth/logout", logoutHandler(conn))
 
 	r.Get("/me", getMeHandler(conn))
+
+	r.Get("/users/{userID}", getUserByIDHandler(conn))
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)

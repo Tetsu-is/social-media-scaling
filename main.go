@@ -466,6 +466,82 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
+type PostTweetRequest struct {
+	Content string `json:"content"`
+}
+
+type PostTweetResponse struct {
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	Content    string    `json:"content"`
+	LikesCount int64     `json:"likes_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID, ok := r.Context().Value(userIDKey).(string)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unable to load user")
+			return
+		}
+
+		var req PostTweetRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if req.Content == "" {
+			respondError(w, http.StatusBadRequest, "content is blank")
+			return
+		}
+
+		id, err := uuid.NewV7()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "internal server error")
+			return
+		}
+
+		var tweet Tweet
+		err = conn.QueryRow(
+			ctx,
+			"INSERT INTO tweets (id, user_id, content) VALUES ($1, $2, $3) RETURNING id, user_id, content, likes_count, created_at, updated_at",
+			id, userID, req.Content,
+		).Scan(&tweet.ID, &tweet.UserID, &tweet.Content, &tweet.LikesCount, &tweet.CreatedAt, &tweet.UpdatedAt)
+		if err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok {
+				switch pgErr.Code {
+				case pgerrcode.UniqueViolation:
+					respondError(w, http.StatusBadRequest, "duplicate tweet")
+					return
+				default:
+					respondError(w, http.StatusInternalServerError, "database error")
+					return
+				}
+			}
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		resp := PostTweetResponse{
+			ID:         tweet.ID,
+			UserID:     tweet.UserID,
+			Content:    tweet.Content,
+			LikesCount: tweet.LikesCount,
+			CreatedAt:  tweet.CreatedAt,
+			UpdatedAt:  tweet.UpdatedAt,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -504,6 +580,7 @@ func main() {
 		r.Use(AuthMiddleware)
 		r.Post("/auth/logout", logoutHandler(conn))
 		r.Get("/me", getMeHandler(conn))
+		r.Post("/tweets", postTweetHandler(conn))
 	})
 
 	log.Println("Server starting on :8080")

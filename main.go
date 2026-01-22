@@ -425,10 +425,7 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 				"SELECT id, user_id, content, likes_count, created_at, updated_at FROM tweets ORDER BY created_at DESC OFFSET $1 LIMIT $2",
 				*cursor+1, *count,
 			)
-			if err == pgx.ErrNoRows {
-				respondError(w, http.StatusNotFound, "not found")
-				return
-			} else if err != nil {
+			if err != nil {
 				respondError(w, http.StatusInternalServerError, err.Error())
 				return
 			}

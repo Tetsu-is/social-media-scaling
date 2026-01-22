@@ -338,8 +338,8 @@ components:
       properties:
         count:
           type: integer
-          description: Total number of items
-          example: 100
+          description: Number of items returned in the current page
+          example: 20
         cursor:
           type: integer
           description: Cursor specified in this request

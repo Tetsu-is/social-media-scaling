@@ -395,7 +395,8 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 		if maxIDParam != "" {
 			mid, err := uuid.Parse(maxIDParam)
 			if err != nil {
-				fmt.Println(err.Error())
+				respondError(w, http.StatusBadRequest, "invalid max_id")
+				return
 			}
 			maxID = mid
 		}

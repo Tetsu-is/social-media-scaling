@@ -372,23 +372,6 @@ type GetTweetsResponse struct {
 	Pagination Pagination `json:"pagination"`
 }
 
-// TODO: move this func into utils
-func parsetIntQuery(r *http.Request, s string) (*int64, error) {
-	q := r.URL.Query()
-	p := q.Get(s)
-	if p == "" {
-		return nil, errors.New("no value")
-	}
-	v, err := strconv.Atoi(p)
-	if err != nil {
-		return nil, err
-	}
-
-	ret := int64(v)
-
-	return &ret, nil
-}
-
 func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -594,4 +577,21 @@ func generateToken(id string) string {
 	}
 
 	return tokenString
+}
+
+// TODO: move this func into utils
+func parsetIntQuery(r *http.Request, s string) (*int64, error) {
+	q := r.URL.Query()
+	p := q.Get(s)
+	if p == "" {
+		return nil, errors.New("no value")
+	}
+	v, err := strconv.Atoi(p)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := int64(v)
+
+	return &ret, nil
 }

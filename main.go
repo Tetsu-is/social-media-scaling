@@ -377,8 +377,8 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 		ctx := r.Context()
 
 		// parse query params
-		count, _ := parsetIntQuery(r, "count")
-		cursor, _ := parsetIntQuery(r, "cursor")
+		count, _ := parseIntQuery(r, "count")
+		cursor, _ := parseIntQuery(r, "cursor")
 		q := r.URL.Query()
 		maxIDParam := q.Get("max_id")
 		fmt.Println("mip", maxIDParam)
@@ -657,7 +657,7 @@ func generateToken(id string) string {
 }
 
 // TODO: move this func into utils
-func parsetIntQuery(r *http.Request, s string) (*int64, error) {
+func parseIntQuery(r *http.Request, s string) (*int64, error) {
 	q := r.URL.Query()
 	p := q.Get(s)
 	if p == "" {

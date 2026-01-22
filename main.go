@@ -448,8 +448,9 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 			}
 
 		} else {
-			// maxIDによる絶対値指定のクエリ
-			// TODO: impl
+			// maxIDによる絶対値指定のクエリは未サポートのためエラーを返す
+			respondError(w, http.StatusBadRequest, "max_id parameter is not supported yet")
+			return
 		}
 
 		resp := GetTweetsResponse{

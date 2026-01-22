@@ -308,6 +308,10 @@ components:
         content:
           type: string
           example: "Hello, world! This is my first tweet."
+        likes_count:
+          type: integer
+          minimum: 0
+          example: 0
         created_at:
           type: string
           format: date-time
@@ -318,6 +322,7 @@ components:
         - id
         - user_id
         - content
+        - likes_count
         - created_at
 
     TweetsResponse:

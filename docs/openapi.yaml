@@ -289,7 +289,7 @@ components:
       properties:
         content:
           type: string
-          maxLength: 280
+          maxLength: 255
           example: "Hello, world! This is my first tweet."
       required:
         - content

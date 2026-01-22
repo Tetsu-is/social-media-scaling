@@ -51,3 +51,28 @@ CREATE TABLE user_auth (
 | hashed_password | VARCHAR(255) | NOT NULL | Bcrypt hashed password |
 | created_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | Record creation time |
 | updated_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | Record last update time |
+
+
+## Tweets Table
+
+```sql
+CREATE TABLE tweets (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    content VARCHAR(255) NOT NULL,
+    likes_count INTEGER NOT NULL DEFAULT 0 CHECK (likes_count >= 0),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+### Fields
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | UUID | PRIMARY KEY | UUID v7 (アプリ側で生成) |
+| user_id | UUID | NOT NULL, REFERENCES users(id) | 投稿者のユーザーID |
+| content | VARCHAR(255) | NOT NULL | ツイート本文（最大255文字） |
+| likes_count | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | いいね数（非負整数） |
+| created_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | ツイート作成日時 |
+| updated_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | ツイート更新日時 |

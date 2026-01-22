@@ -143,6 +143,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  
+  /tweets:
+    get:
+      summary: List tweets
+      description: Retrieve a paginated list of tweets
+      operationId: listTweets
+      tags:
+        - tweets
+      parameters:
+        - name: count
+          in: query
+          description: Number of tweets to return (default 20, max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Cursor for relative pagination. Use next_cursor or previous_cursor from the response to navigate pages.
+          required: false
+          schema:
+            type: integer
+        - name: max_id
+          in: query
+          description: Returns tweets with an ID less than or equal to the specified ID (absolute position)
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of tweets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TweetsResponse'
+
+    post:
+      summary: Create tweet
+      description: Create a new tweet (max 280 characters)
+      operationId: createTweet
+      tags:
+        - tweets
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTweetRequest'
+      responses:
+        '201':
+          description: Tweet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tweet'
+        '400':
+          description: Invalid request (e.g., content too long)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   securitySchemes:
@@ -211,6 +283,75 @@ components:
       required:
         - user
         - token
+
+    CreateTweetRequest:
+      type: object
+      properties:
+        content:
+          type: string
+          maxLength: 280
+          example: "Hello, world! This is my first tweet."
+      required:
+        - content
+
+    Tweet:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "0190a5e4-b890-7000-8000-000000000010"
+        user_id:
+          type: string
+          format: uuid
+          example: "0190a5e4-b890-7000-8000-000000000001"
+        content:
+          type: string
+          example: "Hello, world! This is my first tweet."
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - content
+        - created_at
+
+    TweetsResponse:
+      type: object
+      properties:
+        tweets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tweet'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required:
+        - tweets
+        - pagination
+
+    Pagination:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total number of items
+          example: 100
+        cursor:
+          type: integer
+          description: Cursor specified in this request
+          example: 20
+        next_cursor:
+          type: integer
+          description: Cursor client use when next fetch
+          example: 40
+      required:
+        - count
+        - cursor
+        - next_cursor
 
     Error:
       type: object

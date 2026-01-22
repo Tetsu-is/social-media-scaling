@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,15 @@ type UserAuth struct {
 	HashedPassword string    `json:"-"`
 	CreatedAt      time.Time `json:"-"`
 	UpdatedAt      time.Time `json:"-"`
+}
+
+type Tweet struct {
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	Content    string    `json:"content"`
+	LikesCount int64     `json:"likes_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type ErrorResponse struct {
@@ -345,6 +355,134 @@ func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
+type GetTweetsRequest struct {
+	Count  *int   `json:"count"`
+	Cursor *int64 `json:"cursor"`
+	MaxID  string `json:"max_id"`
+}
+
+type Pagination struct {
+	Count      int64 `json:"count"`
+	Cursor     int64 `json:"cursor"`
+	NextCursor int64 `json:"next_cursor"`
+}
+
+type GetTweetsResponse struct {
+	Tweets     []Tweet    `json:"tweets"`
+	Pagination Pagination `json:"pagination"`
+}
+
+// TODO: move this func into utils
+func parsetIntQuery(r *http.Request, s string) (*int64, error) {
+	q := r.URL.Query()
+	p := q.Get(s)
+	if p == "" {
+		return nil, errors.New("no value")
+	}
+	v, err := strconv.Atoi(p)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := int64(v)
+
+	return &ret, nil
+}
+
+func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// parse query params
+		count, _ := parsetIntQuery(r, "count")
+		cursor, _ := parsetIntQuery(r, "cursor")
+		q := r.URL.Query()
+		maxIDParam := q.Get("max_id")
+		fmt.Println("mip", maxIDParam)
+
+		// cusor と maxID両方指定はだめ
+		if cursor != nil && maxIDParam != "" {
+			respondError(w, http.StatusBadRequest, "unable to specify both cursor and max_id")
+			return
+		}
+
+		// conversion
+		var maxID uuid.UUID
+
+		if maxIDParam != "" {
+			mid, err := uuid.Parse(maxIDParam)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			maxID = mid
+		}
+
+		// default value of cout
+		if count == nil {
+			d := int64(20)
+			count = &d
+		}
+
+		if cursor == nil {
+			d := int64(-1)
+			cursor = &d
+		}
+
+		// TODO: cursor らへんのゼロ値の扱いとか設計はもう少し練られるかも？
+
+		// db access
+		var tweets []Tweet
+		var rowsCount int64
+
+		if maxID == uuid.Nil {
+			// cursorによる相対位置指定のクエリ
+			rows, err := conn.Query(
+				ctx,
+				"SELECT id, user_id, content, likes_count, created_at, updated_at FROM tweets ORDER BY created_at DESC OFFSET $1 LIMIT $2",
+				*cursor+1, *count,
+			)
+			if err == pgx.ErrNoRows {
+				respondError(w, http.StatusNotFound, "not found")
+				return
+			} else if err != nil {
+				respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			defer rows.Close()
+
+			for rows.Next() {
+				var tweet Tweet
+				err := rows.Scan(&tweet.ID, &tweet.UserID, &tweet.Content, &tweet.LikesCount, &tweet.CreatedAt, &tweet.UpdatedAt)
+				if err != nil {
+					respondError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+
+				tweets = append(tweets, tweet)
+				rowsCount++
+			}
+
+		} else {
+			// maxIDによる絶対値指定のクエリ
+			// TODO: impl
+		}
+
+		resp := GetTweetsResponse{
+			Tweets: tweets,
+			Pagination: Pagination{
+				Count:      rowsCount,
+				Cursor:     *cursor,
+				NextCursor: *cursor + rowsCount,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -375,6 +513,7 @@ func main() {
 		r.Post("/auth/signup", signupHandler(conn))
 		r.Post("/auth/login", loginHandler(conn))
 		r.Get("/users/{userID}", getUserByIDHandler(conn))
+		r.Get("/tweets", getTweetsHandler(conn))
 	})
 
 	// PrivateRoutes(need token)

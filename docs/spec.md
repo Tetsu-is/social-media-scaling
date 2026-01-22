@@ -14,10 +14,14 @@ A high-performance REST API designed to handle social media operations at scale.
 
 See [openapi.yaml](../openapi.yaml) for API endpoint details.
 
+### Tweet Management
+
+- **Tweet Creation** - Create a new tweet with text content (max 280 characters)
+- **Tweet Listing** - Paginated list of tweets (supports filtering by user)
+
 ### Future Features
 
 - Authentication (JWT-based)
-- Posts/content creation
 - Follow/unfollow relationships
 - Feed generation
 - Rate limiting
@@ -30,6 +34,9 @@ See [openapi.yaml](../openapi.yaml) for API endpoint details.
 2. User IDs are auto-generated integers
 3. All timestamps use ISO 8601 format
 4. API responses use JSON (except health check)
+5. Tweets must be associated with a valid user
+6. Tweet content must not exceed 280 characters
+7. Tweets are ordered by creation time (newest first) by default
 
 ### Non-Functional Requirements
 

@@ -401,7 +401,7 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 			maxID = mid
 		}
 
-		// default value of cout
+		// default value of count
 		if count == nil {
 			d := int64(20)
 			count = &d

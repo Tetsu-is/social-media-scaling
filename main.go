@@ -128,7 +128,7 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			if pgErr, ok := err.(*pgconn.PgError); ok {
 				switch pgErr.Code {
 				case pgerrcode.UniqueViolation:
-					respondError(w, http.StatusBadRequest, "user name is already used")
+					respondError(w, http.StatusConflict, "user name is already used")
 					return
 				default:
 					respondError(w, http.StatusInternalServerError, "database error")
@@ -498,6 +498,10 @@ func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, "content is blank")
 			return
 		}
+		if len(req.Content) > 255 {
+			respondError(w, http.StatusBadRequest, "content exceeds 255 characters")
+			return
+		}
 
 		id, err := uuid.NewV7()
 		if err != nil {
@@ -541,6 +545,200 @@ func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
+func followHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		followerID, ok := ctx.Value(userIDKey).(string)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unable to load user")
+			return
+		}
+
+		followeeID := chi.URLParam(r, "userID")
+		if followeeID == "" {
+			respondError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+
+		if followerID == followeeID {
+			respondError(w, http.StatusBadRequest, "cannot follow yourself")
+			return
+		}
+
+		// フォロー対象の存在確認
+		var exists bool
+		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", followeeID).Scan(&exists)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		if !exists {
+			respondError(w, http.StatusNotFound, "user not found")
+			return
+		}
+
+		// フォロー実行
+		_, err = conn.Exec(ctx,
+			"INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+			followerID, followeeID,
+		)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to follow")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func unfollowHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		followerID, ok := ctx.Value(userIDKey).(string)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unable to load user")
+			return
+		}
+
+		followeeID := chi.URLParam(r, "userID")
+		if followeeID == "" {
+			respondError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+
+		_, err := conn.Exec(ctx,
+			"DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2",
+			followerID, followeeID,
+		)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to unfollow")
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+type GetUsersResponse struct {
+	Users []User `json:"users"`
+}
+
+func getFollowersHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID := chi.URLParam(r, "userID")
+		if userID == "" {
+			respondError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+
+		// ユーザー存在確認
+		var exists bool
+		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		if !exists {
+			respondError(w, http.StatusNotFound, "user not found")
+			return
+		}
+
+		rows, err := conn.Query(ctx,
+			`SELECT u.id, u.name, u.created_at, u.updated_at
+			 FROM users u
+			 INNER JOIN follows f ON u.id = f.follower_id
+			 WHERE f.followee_id = $1
+			 ORDER BY f.created_at DESC`,
+			userID,
+		)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		defer rows.Close()
+
+		var users []User
+		for rows.Next() {
+			var user User
+			if err := rows.Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt); err != nil {
+				respondError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			users = append(users, user)
+		}
+
+		if users == nil {
+			users = []User{}
+		}
+
+		resp := GetUsersResponse{Users: users}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func getFollowingHandler(conn *pgx.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID := chi.URLParam(r, "userID")
+		if userID == "" {
+			respondError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+
+		// ユーザー存在確認
+		var exists bool
+		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		if !exists {
+			respondError(w, http.StatusNotFound, "user not found")
+			return
+		}
+
+		rows, err := conn.Query(ctx,
+			`SELECT u.id, u.name, u.created_at, u.updated_at
+			 FROM users u
+			 INNER JOIN follows f ON u.id = f.followee_id
+			 WHERE f.follower_id = $1
+			 ORDER BY f.created_at DESC`,
+			userID,
+		)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		defer rows.Close()
+
+		var users []User
+		for rows.Next() {
+			var user User
+			if err := rows.Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt); err != nil {
+				respondError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			users = append(users, user)
+		}
+
+		if users == nil {
+			users = []User{}
+		}
+
+		resp := GetUsersResponse{Users: users}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -571,6 +769,8 @@ func main() {
 		r.Post("/auth/signup", signupHandler(conn))
 		r.Post("/auth/login", loginHandler(conn))
 		r.Get("/users/{userID}", getUserByIDHandler(conn))
+		r.Get("/users/{userID}/followers", getFollowersHandler(conn))
+		r.Get("/users/{userID}/following", getFollowingHandler(conn))
 		r.Get("/tweets", getTweetsHandler(conn))
 	})
 
@@ -578,7 +778,9 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware)
 		r.Post("/auth/logout", logoutHandler(conn))
-		r.Get("/me", getMeHandler(conn))
+		r.Get("/users/me", getMeHandler(conn))
+		r.Put("/users/{userID}/follow", followHandler(conn))
+		r.Delete("/users/{userID}/follow", unfollowHandler(conn))
 		r.Post("/tweets", postTweetHandler(conn))
 	})
 

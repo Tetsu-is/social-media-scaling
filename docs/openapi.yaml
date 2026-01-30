@@ -43,7 +43,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
-          description: Invalid request or username already exists
+          description: Invalid request (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Username already exists
           content:
             application/json:
               schema:
@@ -95,13 +101,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /me:
+  /users/me:
     get:
       summary: Get current user
       description: Retrieve the authenticated user's information
       operationId: getMe
       tags:
-        - me
+        - users
       security:
         - bearerAuth: []
       responses:
@@ -143,7 +149,126 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  
+
+  /users/{id}/follow:
+    put:
+      summary: Follow user
+      description: Follow the specified user
+      operationId: followUser
+      tags:
+        - follows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Followed successfully
+        '400':
+          description: Invalid request (e.g., cannot follow yourself)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Unfollow user
+      description: Unfollow the specified user
+      operationId: unfollowUser
+      tags:
+        - follows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Unfollowed successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{id}/followers:
+    get:
+      summary: Get followers
+      description: Get list of users who follow the specified user
+      operationId: getFollowers
+      tags:
+        - follows
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of followers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{id}/following:
+    get:
+      summary: Get following
+      description: Get list of users the specified user is following
+      operationId: getFollowing
+      tags:
+        - follows
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of following users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /tweets:
     get:
       summary: List tweets
@@ -184,7 +309,7 @@ paths:
 
     post:
       summary: Create tweet
-      description: Create a new tweet (max 280 characters)
+      description: Create a new tweet (max 255 characters)
       operationId: createTweet
       tags:
         - tweets
@@ -357,6 +482,16 @@ components:
         - count
         - cursor
         - next_cursor
+
+    UsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+      required:
+        - users
 
     Error:
       type: object

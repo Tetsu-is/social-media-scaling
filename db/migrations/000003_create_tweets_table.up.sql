@@ -8,3 +8,4 @@ CREATE TABLE IF NOT EXISTS tweets (
 );
 
 -- CREATE INDEX idx_tweets_posted_by ON tweets(user_id)
+-- 後でインデックス張ってみて性能を比べてみる

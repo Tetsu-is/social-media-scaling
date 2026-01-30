@@ -76,3 +76,33 @@ CREATE TABLE tweets (
 | likes_count | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | いいね数（非負整数） |
 | created_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | ツイート作成日時 |
 | updated_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | ツイート更新日時 |
+
+
+## Follows Table
+
+```sql
+CREATE TABLE follows (
+    follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    followee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (follower_id, followee_id),
+    CHECK (follower_id != followee_id)
+);
+
+CREATE INDEX idx_follows_follower ON follows(follower_id);
+CREATE INDEX idx_follows_followee ON follows(followee_id);
+```
+
+### Fields
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| follower_id | UUID | NOT NULL, REFERENCES users(id), PK | フォローする側のユーザーID |
+| followee_id | UUID | NOT NULL, REFERENCES users(id), PK | フォローされる側のユーザーID |
+| created_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | フォロー日時 |
+
+### Constraints
+
+- **複合主キー**: `(follower_id, followee_id)` で同じペアの重複フォローを防止
+- **CHECK制約**: 自分自身をフォローすることを禁止
+- **ON DELETE CASCADE**: ユーザー削除時にフォロー関係も自動削除

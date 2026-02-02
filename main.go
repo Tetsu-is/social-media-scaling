@@ -474,6 +474,68 @@ func getFollowingHandler(userRepo *repository.UserRepository, followRepo *reposi
 	}
 }
 
+func getFeedHandler(feedRepo *repository.FeedRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID, ok := ctx.Value(auth.UserIDKey).(string)
+		if !ok {
+			respondError(w, http.StatusInternalServerError, "unable to load user")
+			return
+		}
+
+		count, _ := parseIntQuery(r, "count")
+		cursor, _ := parseIntQuery(r, "cursor")
+
+		if count == nil {
+			d := int64(20)
+			count = &d
+		}
+
+		if cursor == nil {
+			d := int64(-1)
+			cursor = &d
+		}
+
+		if *count < 1 || *count > 100 {
+			respondError(w, http.StatusBadRequest, "count must be between 1 and 100")
+			return
+		}
+
+		// count + 1 件取得して次のページがあるか確認する
+		tweets, err := feedRepo.GetFeedTweets(ctx, userID, *cursor, *count+1)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to fetch feed")
+			return
+		}
+
+		if tweets == nil {
+			tweets = []domain.TweetWithUser{}
+		}
+
+		// 次のページがあるか確認
+		var nextCursor *int64
+		if int64(len(tweets)) > *count {
+			// count + 1 件取得できた場合は次のページがある
+			tweets = tweets[:*count] // 最初の count 件だけ返す
+			nc := *cursor + *count
+			nextCursor = &nc
+		}
+
+		resp := domain.GetFeedResponse{
+			Tweets: tweets,
+			Pagination: domain.FeedPagination{
+				Count:      int64(len(tweets)),
+				NextCursor: nextCursor,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 // ============================================
 // Main
 // ============================================
@@ -490,6 +552,7 @@ func main() {
 	userRepo := repository.NewUserRepository(conn)
 	tweetRepo := repository.NewTweetRepository(conn)
 	followRepo := repository.NewFollowRepository(conn)
+	feedRepo := repository.NewFeedRepository(conn)
 
 	r := chi.NewRouter()
 
@@ -515,6 +578,7 @@ func main() {
 		r.Use(auth.Middleware)
 		r.Post("/auth/logout", logoutHandler())
 		r.Get("/users/me", getMeHandler(userRepo))
+		r.Get("/users/me/feed", getFeedHandler(feedRepo))
 		r.Put("/users/{userID}/follow", followHandler(userRepo, followRepo))
 		r.Delete("/users/{userID}/follow", unfollowHandler(followRepo))
 		r.Post("/tweets", postTweetHandler(tweetRepo))

@@ -44,6 +44,37 @@ See [openapi.yaml](../openapi.yaml) for API endpoint details.
 2. Support concurrent connections via connection pooling
 3. Horizontal scalability through stateless design
 
+## Pagination
+
+### Common Pagination Rules
+
+All paginated endpoints follow these consistent rules:
+
+1. **Cursor Default Value**: `-1`
+   - When no `cursor` parameter is provided, the default value is `-1`
+   - This represents the starting position (before the first item)
+
+2. **Count Parameter**:
+   - Default: `20` items per page
+   - Maximum: `100` items per page
+   - Minimum: `1` item per page
+
+3. **Response Format**:
+   - `count`: Number of items returned in the current page
+   - `cursor`: Cursor value used in the current request
+   - `next_cursor`: Cursor for the next page (null if no more pages)
+
+4. **Next Page Detection**:
+   - Fetch `count + 1` items from the database
+   - If `count + 1` items are returned, a next page exists
+   - Return only the first `count` items to the client
+   - Calculate `next_cursor` as `cursor + count`
+
+### Endpoints Using Cursor-Based Pagination
+
+- `GET /tweets` - List all tweets
+- `GET /users/me/feed` - Get authenticated user's feed
+
 ## Data Model
 
 See [schema.md](./schema.md) for database schema details.

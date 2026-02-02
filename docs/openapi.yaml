@@ -124,6 +124,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /users/me/feed:
+    get:
+      summary: Get news feed
+      description: Retrieve tweets from users that the authenticated user follows (pull-based news feed with cursor-based pagination)
+      operationId: getFeed
+      tags:
+        - feed
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: count
+          in: query
+          description: Number of tweets to return (default 20, max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Cursor for pagination (timestamp). Omit for first page, use next_cursor from previous response for next page.
+          required: false
+          schema:
+            type: string
+            format: date-time
+            example: "2024-01-15T10:30:00.123456Z"
+      responses:
+        '200':
+          description: Feed retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /users/{id}:
     get:
       summary: Get user
@@ -450,6 +503,41 @@ components:
         - likes_count
         - created_at
 
+    TweetWithUser:
+      type: object
+      description: Tweet with embedded user information (used in feed)
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "0190a5e4-b890-7000-8000-000000000010"
+        user_id:
+          type: string
+          format: uuid
+          example: "0190a5e4-b890-7000-8000-000000000001"
+        content:
+          type: string
+          example: "Hello, world! This is my first tweet."
+        likes_count:
+          type: integer
+          minimum: 0
+          example: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - id
+        - user_id
+        - content
+        - likes_count
+        - created_at
+        - user
+
     TweetsResponse:
       type: object
       properties:
@@ -462,6 +550,38 @@ components:
       required:
         - tweets
         - pagination
+
+    FeedResponse:
+      type: object
+      description: News feed response with tweets from followed users
+      properties:
+        tweets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TweetWithUser'
+        pagination:
+          $ref: '#/components/schemas/FeedPagination'
+      required:
+        - tweets
+        - pagination
+
+    FeedPagination:
+      type: object
+      description: Cursor-based pagination for feed
+      properties:
+        count:
+          type: integer
+          description: Number of items returned in the current page
+          example: 20
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+          description: Cursor to use for the next page (timestamp). If null, this is the last page.
+          example: "2024-01-15T10:30:00.123456Z"
+      required:
+        - count
+        - next_cursor
 
     Pagination:
       type: object

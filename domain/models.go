@@ -29,6 +29,16 @@ type Tweet struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type TweetWithUser struct {
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	Content    string    `json:"content"`
+	LikesCount int64     `json:"likes_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	User       User      `json:"user"`
+}
+
 // ============================================
 // Request/Response Models
 // ============================================
@@ -90,4 +100,14 @@ type GetTweetsResponse struct {
 
 type GetUsersResponse struct {
 	Users []User `json:"users"`
+}
+
+type FeedPagination struct {
+	Count      int64  `json:"count"`
+	NextCursor *int64 `json:"next_cursor"`
+}
+
+type GetFeedResponse struct {
+	Tweets     []TweetWithUser `json:"tweets"`
+	Pagination FeedPagination  `json:"pagination"`
 }

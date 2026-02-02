@@ -9,83 +9,26 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/Tetsu-is/social-media-scaling/auth"
+	"github.com/Tetsu-is/social-media-scaling/domain"
+	"github.com/Tetsu-is/social-media-scaling/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // ============================================
-// Domain Objects
+// Handlers
 // ============================================
 
-type User struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type UserAuth struct {
-	UserID         string    `json:"-"` // 外に出さない予定だけど念の為パースできないように
-	HashedPassword string    `json:"-"`
-	CreatedAt      time.Time `json:"-"`
-	UpdatedAt      time.Time `json:"-"`
-}
-
-type Tweet struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Content    string    `json:"content"`
-	LikesCount int64     `json:"likes_count"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-type ErrorResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// ============================================
-// Handler
-// ============================================
-
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, err := validateToken(r)
-		if err != nil {
-			respondError(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-type SignupRequest struct {
-	Name     string `json:"name"`
-	Password string `json:"password"`
-}
-
-type SignupResponse struct {
-	User  *User  `json:"user"`
-	Token string `json:"token"`
-}
-
-func signupHandler(conn *pgx.Conn) http.HandlerFunc {
+func signupHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// リクエストパース
-		var req SignupRequest
+		var req domain.SignupRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -96,69 +39,26 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// ID採番 (UUID v7)
 		id, err := uuid.NewV7()
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
 
-		p := []byte(req.Password)
-		hashedPassword, err := bcrypt.GenerateFromPassword(p, 10)
+		user, err := userRepo.CreateUser(ctx, id.String(), req.Name, req.Password)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to hash password")
-			return
-		}
-
-		// トランザクション開始
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "internal server error")
-			return
-		}
-		defer tx.Rollback(ctx)
-
-		// ユーザー作成
-		var user User
-		err = tx.QueryRow(ctx,
-			"INSERT INTO users (id, name) VALUES ($1, $2) RETURNING id, name, created_at, updated_at",
-			id.String(), req.Name,
-		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
-		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok {
-				switch pgErr.Code {
-				case pgerrcode.UniqueViolation:
-					respondError(w, http.StatusConflict, "user name is already used")
-					return
-				default:
-					respondError(w, http.StatusInternalServerError, "database error")
-					return
-				}
+			if err == repository.ErrDuplicateUser {
+				respondError(w, http.StatusConflict, "user name is already used")
+				return
 			}
 			respondError(w, http.StatusInternalServerError, "failed to signup")
 			return
 		}
 
-		// 認証情報作成
-		_, err = tx.Exec(ctx,
-			"INSERT INTO user_auth (user_id, hashed_password) VALUES ($1, $2)",
-			id.String(), hashedPassword,
-		)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to signup")
-			return
-		}
+		token := auth.GenerateToken(id.String())
 
-		// コミット
-		if err := tx.Commit(ctx); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to signup")
-			return
-		}
-
-		token := generateToken(id.String())
-
-		resp := SignupResponse{
-			User:  &user,
+		resp := domain.SignupResponse{
+			User:  user,
 			Token: token,
 		}
 
@@ -168,22 +68,11 @@ func signupHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-type LoginRequest struct {
-	Name     string `json:"name"`
-	Password string `json:"password"`
-}
-
-type LoginResponse struct {
-	User  *User  `json:"user"`
-	Token string `json:"token"`
-}
-
-func loginHandler(conn *pgx.Conn) http.HandlerFunc {
+func loginHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// parse request data
-		var req LoginRequest
+		var req domain.LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -194,13 +83,8 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// check if there is a user data
-		var user User
-		err := conn.QueryRow(ctx,
-			"SELECT id, name, created_at, updated_at FROM users WHERE name = $1",
-			req.Name,
-		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
-		if err == pgx.ErrNoRows {
+		user, err := userRepo.GetUserByName(ctx, req.Name)
+		if err == repository.ErrUserNotFound {
 			respondError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		} else if err != nil {
@@ -208,38 +92,23 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// check if the password match with one in db
-		var userAuth UserAuth
-		err = conn.QueryRow(ctx,
-			"SELECT user_id, hashed_password, created_at, updated_at from user_auth WHERE user_id = $1",
-			user.ID,
-		).Scan(&userAuth.UserID, &userAuth.HashedPassword, &userAuth.CreatedAt, &userAuth.UpdatedAt)
+		userAuth, err := userRepo.GetUserAuth(ctx, user.ID)
 		if err != nil {
-			// userは見つかったのに認証情報がないのはサインアップのトランザクションに不具合の可能性あるかも
 			respondError(w, http.StatusInternalServerError, "failed to find auth data")
 			return
 		}
 
-		err = bcrypt.CompareHashAndPassword([]byte(userAuth.HashedPassword), []byte(req.Password))
+		err = userRepo.VerifyPassword(userAuth.HashedPassword, req.Password)
 		if err != nil {
 			respondError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 
-		// JWT トークン生成
-		claims := jwt.MapClaims{
-			"user_id": user.ID,
-			"exp":     time.Now().Add(time.Hour * 24).Unix(),
-			"iat":     time.Now().Unix(),
-		}
+		token := auth.GenerateToken(user.ID)
 
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		secretKey := []byte("secretKey")
-		tokenString, _ := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
-
-		resp := LoginResponse{
-			User:  &user,
-			Token: tokenString,
+		resp := domain.LoginResponse{
+			User:  user,
+			Token: token,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -248,11 +117,8 @@ func loginHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-func logoutHandler(conn *pgx.Conn) http.HandlerFunc {
+func logoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// ctx := r.Context()
-
-		// jwtを取り出す。
 		tokenString := r.Header.Get("Authorization")
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		if tokenString == "" {
@@ -283,35 +149,23 @@ func logoutHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// userID, ok := claims["user_id"].(string)
-		//if !ok {
-		//	http.Error(w, "user_id not found in token", http.StatusUnauthorized)
-		//	return
-		//}
-
-		// refreshTokenなどは後ほど実装。
 		fmt.Println(claims)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
-func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
+func getMeHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID, ok := r.Context().Value(userIDKey).(string)
+		userID, ok := ctx.Value(auth.UserIDKey).(string)
 		if !ok {
 			respondError(w, http.StatusInternalServerError, "unable to load user")
 			return
 		}
 
-		var user User
-		err := conn.QueryRow(
-			ctx,
-			"SELECT id, name, created_at, updated_at FROM users WHERE id = $1",
-			userID,
-		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
-		if err == pgx.ErrNoRows {
+		user, err := userRepo.GetUserByID(ctx, userID)
+		if err == repository.ErrUserNotFound {
 			respondError(w, http.StatusNotFound, "user not found")
 			return
 		} else if err != nil {
@@ -325,7 +179,7 @@ func getMeHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
+func getUserByIDHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -335,13 +189,8 @@ func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		var user User
-		err := conn.QueryRow(
-			ctx,
-			"SELECT id, name, created_at, updated_at FROM users WHERE id = $1",
-			userID,
-		).Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt)
-		if err == pgx.ErrNoRows {
+		user, err := userRepo.GetUserByID(ctx, userID)
+		if err == repository.ErrUserNotFound {
 			respondError(w, http.StatusNotFound, "user not found")
 			return
 		} else if err != nil {
@@ -355,43 +204,21 @@ func getUserByIDHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-type GetTweetsRequest struct {
-	Count  *int   `json:"count"`
-	Cursor *int64 `json:"cursor"`
-	MaxID  string `json:"max_id"`
-}
-
-type Pagination struct {
-	Count      int64 `json:"count"`
-	Cursor     int64 `json:"cursor"`
-	NextCursor int64 `json:"next_cursor"`
-}
-
-type GetTweetsResponse struct {
-	Tweets     []Tweet    `json:"tweets"`
-	Pagination Pagination `json:"pagination"`
-}
-
-func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
+func getTweetsHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// parse query params
 		count, _ := parseIntQuery(r, "count")
 		cursor, _ := parseIntQuery(r, "cursor")
 		q := r.URL.Query()
 		maxIDParam := q.Get("max_id")
-		fmt.Println("mip", maxIDParam)
 
-		// cusor と maxID両方指定はだめ
 		if cursor != nil && maxIDParam != "" {
 			respondError(w, http.StatusBadRequest, "unable to specify both cursor and max_id")
 			return
 		}
 
-		// conversion
 		var maxID uuid.UUID
-
 		if maxIDParam != "" {
 			mid, err := uuid.Parse(maxIDParam)
 			if err != nil {
@@ -401,7 +228,6 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 			maxID = mid
 		}
 
-		// default value of count
 		if count == nil {
 			d := int64(20)
 			count = &d
@@ -412,50 +238,36 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 			cursor = &d
 		}
 
-		// TODO: cursor らへんのゼロ値の扱いとか設計はもう少し練られるかも？
-
-		// db access
-		var tweets []Tweet
-		var rowsCount int64
+		var tweets []domain.Tweet
 
 		if maxID == uuid.Nil {
-			// cursorによる相対位置指定のクエリ
-			rows, err := conn.Query(
-				ctx,
-				"SELECT id, user_id, content, likes_count, created_at, updated_at FROM tweets ORDER BY created_at DESC OFFSET $1 LIMIT $2",
-				*cursor+1, *count,
-			)
+			var err error
+			// count + 1 件取得して次のページがあるか確認する
+			tweets, err = tweetRepo.GetTweetsByCursor(ctx, *cursor, *count+1)
 			if err != nil {
 				respondError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-
-			defer rows.Close()
-
-			for rows.Next() {
-				var tweet Tweet
-				err := rows.Scan(&tweet.ID, &tweet.UserID, &tweet.Content, &tweet.LikesCount, &tweet.CreatedAt, &tweet.UpdatedAt)
-				if err != nil {
-					respondError(w, http.StatusInternalServerError, err.Error())
-					return
-				}
-
-				tweets = append(tweets, tweet)
-				rowsCount++
-			}
-
 		} else {
-			// maxIDによる絶対値指定のクエリは未サポートのためエラーを返す
 			respondError(w, http.StatusBadRequest, "max_id parameter is not supported yet")
 			return
 		}
 
-		resp := GetTweetsResponse{
+		// 次のページがあるか確認
+		var nextCursor *int64
+		if int64(len(tweets)) > *count {
+			// count + 1 件取得できた場合は次のページがある
+			tweets = tweets[:*count] // 最初の count 件だけ返す
+			nc := *cursor + *count
+			nextCursor = &nc
+		}
+
+		resp := domain.GetTweetsResponse{
 			Tweets: tweets,
-			Pagination: Pagination{
-				Count:      rowsCount,
+			Pagination: domain.Pagination{
+				Count:      int64(len(tweets)),
 				Cursor:     *cursor,
-				NextCursor: *cursor + rowsCount,
+				NextCursor: nextCursor,
 			},
 		}
 
@@ -465,30 +277,17 @@ func getTweetsHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-type PostTweetRequest struct {
-	Content string `json:"content"`
-}
-
-type PostTweetResponse struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Content    string    `json:"content"`
-	LikesCount int64     `json:"likes_count"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
+func postTweetHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID, ok := r.Context().Value(userIDKey).(string)
+		userID, ok := ctx.Value(auth.UserIDKey).(string)
 		if !ok {
 			respondError(w, http.StatusInternalServerError, "unable to load user")
 			return
 		}
 
-		var req PostTweetRequest
+		var req domain.PostTweetRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
@@ -509,28 +308,17 @@ func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		var tweet Tweet
-		err = conn.QueryRow(
-			ctx,
-			"INSERT INTO tweets (id, user_id, content) VALUES ($1, $2, $3) RETURNING id, user_id, content, likes_count, created_at, updated_at",
-			id, userID, req.Content,
-		).Scan(&tweet.ID, &tweet.UserID, &tweet.Content, &tweet.LikesCount, &tweet.CreatedAt, &tweet.UpdatedAt)
+		tweet, err := tweetRepo.CreateTweet(ctx, id.String(), userID, req.Content)
 		if err != nil {
-			if pgErr, ok := err.(*pgconn.PgError); ok {
-				switch pgErr.Code {
-				case pgerrcode.UniqueViolation:
-					respondError(w, http.StatusBadRequest, "duplicate tweet")
-					return
-				default:
-					respondError(w, http.StatusInternalServerError, "database error")
-					return
-				}
+			if err == repository.ErrDuplicateTweet {
+				respondError(w, http.StatusBadRequest, "duplicate tweet")
+				return
 			}
 			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		resp := PostTweetResponse{
+		resp := domain.PostTweetResponse{
 			ID:         tweet.ID,
 			UserID:     tweet.UserID,
 			Content:    tweet.Content,
@@ -545,11 +333,11 @@ func postTweetHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-func followHandler(conn *pgx.Conn) http.HandlerFunc {
+func followHandler(userRepo *repository.UserRepository, followRepo *repository.FollowRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		followerID, ok := ctx.Value(userIDKey).(string)
+		followerID, ok := ctx.Value(auth.UserIDKey).(string)
 		if !ok {
 			respondError(w, http.StatusInternalServerError, "unable to load user")
 			return
@@ -566,9 +354,7 @@ func followHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// フォロー対象の存在確認
-		var exists bool
-		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", followeeID).Scan(&exists)
+		exists, err := userRepo.CheckUserExists(ctx, followeeID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
@@ -578,11 +364,7 @@ func followHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// フォロー実行
-		_, err = conn.Exec(ctx,
-			"INSERT INTO follows (follower_id, followee_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-			followerID, followeeID,
-		)
+		err = followRepo.CreateFollow(ctx, followerID, followeeID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to follow")
 			return
@@ -592,11 +374,11 @@ func followHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-func unfollowHandler(conn *pgx.Conn) http.HandlerFunc {
+func unfollowHandler(followRepo *repository.FollowRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		followerID, ok := ctx.Value(userIDKey).(string)
+		followerID, ok := ctx.Value(auth.UserIDKey).(string)
 		if !ok {
 			respondError(w, http.StatusInternalServerError, "unable to load user")
 			return
@@ -608,10 +390,7 @@ func unfollowHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		_, err := conn.Exec(ctx,
-			"DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2",
-			followerID, followeeID,
-		)
+		err := followRepo.DeleteFollow(ctx, followerID, followeeID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to unfollow")
 			return
@@ -621,11 +400,7 @@ func unfollowHandler(conn *pgx.Conn) http.HandlerFunc {
 	}
 }
 
-type GetUsersResponse struct {
-	Users []User `json:"users"`
-}
-
-func getFollowersHandler(conn *pgx.Conn) http.HandlerFunc {
+func getFollowersHandler(userRepo *repository.UserRepository, followRepo *repository.FollowRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -635,9 +410,7 @@ func getFollowersHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// ユーザー存在確認
-		var exists bool
-		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+		exists, err := userRepo.CheckUserExists(ctx, userID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
@@ -647,42 +420,24 @@ func getFollowersHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		rows, err := conn.Query(ctx,
-			`SELECT u.id, u.name, u.created_at, u.updated_at
-			 FROM users u
-			 INNER JOIN follows f ON u.id = f.follower_id
-			 WHERE f.followee_id = $1
-			 ORDER BY f.created_at DESC`,
-			userID,
-		)
+		users, err := followRepo.GetFollowers(ctx, userID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
-		defer rows.Close()
-
-		var users []User
-		for rows.Next() {
-			var user User
-			if err := rows.Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt); err != nil {
-				respondError(w, http.StatusInternalServerError, "database error")
-				return
-			}
-			users = append(users, user)
-		}
 
 		if users == nil {
-			users = []User{}
+			users = []domain.User{}
 		}
 
-		resp := GetUsersResponse{Users: users}
+		resp := domain.GetUsersResponse{Users: users}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 	}
 }
 
-func getFollowingHandler(conn *pgx.Conn) http.HandlerFunc {
+func getFollowingHandler(userRepo *repository.UserRepository, followRepo *repository.FollowRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -692,9 +447,7 @@ func getFollowingHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		// ユーザー存在確認
-		var exists bool
-		err := conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+		exists, err := userRepo.CheckUserExists(ctx, userID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
@@ -704,35 +457,17 @@ func getFollowingHandler(conn *pgx.Conn) http.HandlerFunc {
 			return
 		}
 
-		rows, err := conn.Query(ctx,
-			`SELECT u.id, u.name, u.created_at, u.updated_at
-			 FROM users u
-			 INNER JOIN follows f ON u.id = f.followee_id
-			 WHERE f.follower_id = $1
-			 ORDER BY f.created_at DESC`,
-			userID,
-		)
+		users, err := followRepo.GetFollowing(ctx, userID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
-		defer rows.Close()
-
-		var users []User
-		for rows.Next() {
-			var user User
-			if err := rows.Scan(&user.ID, &user.Name, &user.CreatedAt, &user.UpdatedAt); err != nil {
-				respondError(w, http.StatusInternalServerError, "database error")
-				return
-			}
-			users = append(users, user)
-		}
 
 		if users == nil {
-			users = []User{}
+			users = []domain.User{}
 		}
 
-		resp := GetUsersResponse{Users: users}
+		resp := domain.GetUsersResponse{Users: users}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
@@ -752,36 +487,37 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
+	userRepo := repository.NewUserRepository(conn)
+	tweetRepo := repository.NewTweetRepository(conn)
+	followRepo := repository.NewFollowRepository(conn)
+
 	r := chi.NewRouter()
 
-	// CORS middleware
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:8081"},
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 	}))
 
-	// PublicRoutes
 	r.Group(func(r chi.Router) {
 		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Hello chi!"))
 		})
-		r.Post("/auth/signup", signupHandler(conn))
-		r.Post("/auth/login", loginHandler(conn))
-		r.Get("/users/{userID}", getUserByIDHandler(conn))
-		r.Get("/users/{userID}/followers", getFollowersHandler(conn))
-		r.Get("/users/{userID}/following", getFollowingHandler(conn))
-		r.Get("/tweets", getTweetsHandler(conn))
+		r.Post("/auth/signup", signupHandler(userRepo))
+		r.Post("/auth/login", loginHandler(userRepo))
+		r.Get("/users/{userID}", getUserByIDHandler(userRepo))
+		r.Get("/users/{userID}/followers", getFollowersHandler(userRepo, followRepo))
+		r.Get("/users/{userID}/following", getFollowingHandler(userRepo, followRepo))
+		r.Get("/tweets", getTweetsHandler(tweetRepo))
 	})
 
-	// PrivateRoutes(need token)
 	r.Group(func(r chi.Router) {
-		r.Use(AuthMiddleware)
-		r.Post("/auth/logout", logoutHandler(conn))
-		r.Get("/users/me", getMeHandler(conn))
-		r.Put("/users/{userID}/follow", followHandler(conn))
-		r.Delete("/users/{userID}/follow", unfollowHandler(conn))
-		r.Post("/tweets", postTweetHandler(conn))
+		r.Use(auth.Middleware)
+		r.Post("/auth/logout", logoutHandler())
+		r.Get("/users/me", getMeHandler(userRepo))
+		r.Put("/users/{userID}/follow", followHandler(userRepo, followRepo))
+		r.Delete("/users/{userID}/follow", unfollowHandler(followRepo))
+		r.Post("/tweets", postTweetHandler(tweetRepo))
 	})
 
 	log.Println("Server starting on :8080")
@@ -792,72 +528,15 @@ func main() {
 // Utils
 // ============================================
 
-type contextKey string
-
-const userIDKey contextKey = "userID"
-
-func validateToken(r *http.Request) (string, error) {
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		return "", errors.New("token is not set")
-	}
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
-
-		return []byte("secretKey"), nil
-	})
-	if err != nil {
-		return "", errors.New("invalid token")
-	}
-
-	if !token.Valid {
-		return "", errors.New("invalid token")
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", errors.New("invalid token")
-	}
-
-	userID, ok := claims["user_id"].(string)
-	if !ok {
-		return "", errors.New("user_id is not found in token")
-	}
-
-	return userID, nil
-}
-
 func respondError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	json.NewEncoder(w).Encode(domain.ErrorResponse{
 		Code:    code,
 		Message: message,
 	})
 }
 
-func generateToken(id string) string {
-	claims := jwt.MapClaims{
-		"user_id": id,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(),
-		"iat":     time.Now().Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secretKey := []byte("secretKey")
-	tokenString, err := token.SignedString(secretKey) // error握りつぶし箇所。あとでどないかする
-	if err != nil {
-		fmt.Println("generateToken err", err)
-	}
-
-	return tokenString
-}
-
-// TODO: move this func into utils
 func parseIntQuery(r *http.Request, s string) (*int64, error) {
 	q := r.URL.Query()
 	p := q.Get(s)

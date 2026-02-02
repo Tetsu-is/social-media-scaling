@@ -476,7 +476,8 @@ components:
           example: 20
         next_cursor:
           type: integer
-          description: Cursor client use when next fetch
+          nullable: true
+          description: Cursor to use for the next page. If null, this is the last page.
           example: 40
       required:
         - count

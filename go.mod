@@ -1,4 +1,4 @@
-module social-media-scaling
+module github.com/Tetsu-is/social-media-scaling
 
 go 1.25.5
 

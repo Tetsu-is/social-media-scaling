@@ -294,11 +294,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /users/{id}/following:
+  /users/{id}/followees:
     get:
-      summary: Get following
+      summary: Get followees
       description: Get list of users the specified user is following
-      operationId: getFollowing
+      operationId: getFollowees
       tags:
         - follows
       parameters:
@@ -310,7 +310,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: List of following users
+          description: List of followees
           content:
             application/json:
               schema:

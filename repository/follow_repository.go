@@ -57,7 +57,7 @@ func (r *FollowRepository) GetFollowers(ctx context.Context, userID string) ([]d
 	return users, nil
 }
 
-func (r *FollowRepository) GetFollowing(ctx context.Context, userID string) ([]domain.User, error) {
+func (r *FollowRepository) GetFollowees(ctx context.Context, userID string) ([]domain.User, error) {
 	rows, err := r.conn.Query(ctx,
 		`SELECT u.id, u.name, u.created_at, u.updated_at
 		 FROM users u

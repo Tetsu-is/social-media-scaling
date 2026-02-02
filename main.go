@@ -437,7 +437,7 @@ func getFollowersHandler(userRepo *repository.UserRepository, followRepo *reposi
 	}
 }
 
-func getFollowingHandler(userRepo *repository.UserRepository, followRepo *repository.FollowRepository) http.HandlerFunc {
+func getFolloweesHandler(userRepo *repository.UserRepository, followRepo *repository.FollowRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -457,7 +457,7 @@ func getFollowingHandler(userRepo *repository.UserRepository, followRepo *reposi
 			return
 		}
 
-		users, err := followRepo.GetFollowing(ctx, userID)
+		users, err := followRepo.GetFollowees(ctx, userID)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
@@ -570,7 +570,7 @@ func main() {
 		r.Post("/auth/login", loginHandler(userRepo))
 		r.Get("/users/{userID}", getUserByIDHandler(userRepo))
 		r.Get("/users/{userID}/followers", getFollowersHandler(userRepo, followRepo))
-		r.Get("/users/{userID}/following", getFollowingHandler(userRepo, followRepo))
+		r.Get("/users/{userID}/followees", getFolloweesHandler(userRepo, followRepo))
 		r.Get("/tweets", getTweetsHandler(tweetRepo))
 	})
 

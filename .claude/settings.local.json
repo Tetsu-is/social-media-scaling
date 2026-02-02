@@ -3,7 +3,8 @@
     "allow": [
       "Bash(docker exec:*)",
       "Bash(export TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzAxMjU5NjAsImlhdCI6MTc3MDAzOTU2MCwidXNlcl9pZCI6IjAxOWMxZGVlLWU2NWEtN2QxMy1iMGMwLWFlNTJmMDgyODU1MSJ9.1fOrfM1KaXssg9KtaVlCqR6XS8XxLNHmkSwswMnPVuM\":*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(psql:*)"
     ]
   }
 }

@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/Tetsu-is/social-media-scaling/domain"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type FeedRepository struct {
-	conn *pgx.Conn
+	conn *pgxpool.Pool
 }
 
-func NewFeedRepository(conn *pgx.Conn) *FeedRepository {
+func NewFeedRepository(conn *pgxpool.Pool) *FeedRepository {
 	return &FeedRepository{conn: conn}
 }
 

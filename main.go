@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Tetsu-is/social-media-scaling/auth"
 	"github.com/Tetsu-is/social-media-scaling/domain"
@@ -19,7 +20,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ============================================
@@ -543,13 +544,30 @@ func getFeedHandler(feedRepo *repository.FeedRepository) http.HandlerFunc {
 // ============================================
 
 func main() {
-	dsn := "postgres://user:password@localhost:5432/mydatabase"
+	ctx := context.Background()
 
-	conn, err := pgx.Connect(context.Background(), dsn)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://user:password@localhost:5432/mydatabase"
+	}
+
+	pgxConfig, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	pgxConfig.MaxConns = 1
+	pgxConfig.MinConns = 1
+	pgxConfig.MaxConnLifetime = 1 * time.Hour
+	pgxConfig.MaxConnIdleTime = 30 * time.Minute
+	pgxConfig.HealthCheckPeriod = 1 * time.Minute
+
+	// conn, err := pgx.Connect(context.Background(), dsn)
+	conn, err := pgxpool.NewWithConfig(ctx, pgxConfig)
 	if err != nil {
 		log.Fatal("failed to connect database: ", err)
 	}
-	defer conn.Close(context.Background())
+	defer conn.Close()
 
 	userRepo := repository.NewUserRepository(conn)
 	tweetRepo := repository.NewTweetRepository(conn)

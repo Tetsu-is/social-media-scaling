@@ -6,15 +6,15 @@ import (
 	"github.com/Tetsu-is/social-media-scaling/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type TweetRepository struct {
-	conn *pgx.Conn
+	conn *pgxpool.Pool
 }
 
-func NewTweetRepository(conn *pgx.Conn) *TweetRepository {
+func NewTweetRepository(conn *pgxpool.Pool) *TweetRepository {
 	return &TweetRepository{conn: conn}
 }
 
@@ -54,6 +54,10 @@ func (r *TweetRepository) GetTweetsByCursor(ctx context.Context, cursor, count i
 			return nil, err
 		}
 		tweets = append(tweets, tweet)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return tweets, nil

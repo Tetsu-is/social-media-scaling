@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/Tetsu-is/social-media-scaling/domain"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type FollowRepository struct {
-	conn *pgx.Conn
+	conn *pgxpool.Pool
 }
 
-func NewFollowRepository(conn *pgx.Conn) *FollowRepository {
+func NewFollowRepository(conn *pgxpool.Pool) *FollowRepository {
 	return &FollowRepository{conn: conn}
 }
 
@@ -54,6 +54,10 @@ func (r *FollowRepository) GetFollowers(ctx context.Context, userID string) ([]d
 		users = append(users, user)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return users, nil
 }
 
@@ -78,6 +82,10 @@ func (r *FollowRepository) GetFollowees(ctx context.Context, userID string) ([]d
 			return nil, err
 		}
 		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return users, nil

@@ -7,14 +7,15 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserRepository struct {
-	conn *pgx.Conn
+	conn *pgxpool.Pool
 }
 
-func NewUserRepository(conn *pgx.Conn) *UserRepository {
+func NewUserRepository(conn *pgxpool.Pool) *UserRepository {
 	return &UserRepository{conn: conn}
 }
 

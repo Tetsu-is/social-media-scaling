@@ -36,10 +36,10 @@ func (r *TweetRepository) CreateTweet(ctx context.Context, tweetID, userID, cont
 	return &tweet, nil
 }
 
-func (r *TweetRepository) GetTweetsByCursor(ctx context.Context, cursor, count int64) ([]domain.Tweet, error) {
+func (r *TweetRepository) GetTweets(ctx context.Context, offset, limit int64) ([]domain.Tweet, error) {
 	rows, err := r.conn.Query(ctx,
 		"SELECT id, user_id, content, likes_count, created_at, updated_at FROM tweets ORDER BY created_at DESC OFFSET $1 LIMIT $2",
-		cursor+1, count,
+		offset, limit,
 	)
 	if err != nil {
 		return nil, err

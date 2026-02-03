@@ -211,13 +211,13 @@ func getTweetsHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		count, _ := parseIntQuery(r, "count")
-		cursor, _ := parseIntQuery(r, "cursor")
+		limit, _ := parseIntQuery(r, "limit")
+		offset, _ := parseIntQuery(r, "offset")
 		q := r.URL.Query()
 		maxIDParam := q.Get("max_id")
 
-		if cursor != nil && maxIDParam != "" {
-			respondError(w, http.StatusBadRequest, "unable to specify both cursor and max_id")
+		if offset != nil && maxIDParam != "" {
+			respondError(w, http.StatusBadRequest, "unable to specify both offset and max_id")
 			return
 		}
 
@@ -231,22 +231,30 @@ func getTweetsHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 			maxID = mid
 		}
 
-		if count == nil {
+		if limit == nil {
 			d := int64(20)
-			count = &d
+			limit = &d
+		}
+		if *limit < 1 || *limit > 100 {
+			respondError(w, http.StatusBadRequest, "limit must be between 1 and 100")
+			return
 		}
 
-		if cursor == nil {
-			d := int64(-1)
-			cursor = &d
+		if offset == nil {
+			d := int64(0)
+			offset = &d
+		}
+		if *offset < 0 {
+			respondError(w, http.StatusBadRequest, "offset must be 0 or greater")
+			return
 		}
 
 		var tweets []domain.Tweet
 
 		if maxID == uuid.Nil {
 			var err error
-			// count + 1 件取得して次のページがあるか確認する
-			tweets, err = tweetRepo.GetTweetsByCursor(ctx, *cursor, *count+1)
+			// limit + 1 件取得して次のページがあるか確認する
+			tweets, err = tweetRepo.GetTweets(ctx, *offset, *limit+1)
 			if err != nil {
 				respondError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -257,20 +265,19 @@ func getTweetsHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 		}
 
 		// 次のページがあるか確認
-		var nextCursor *int64
-		if int64(len(tweets)) > *count {
-			// count + 1 件取得できた場合は次のページがある
-			tweets = tweets[:*count] // 最初の count 件だけ返す
-			nc := *cursor + *count
-			nextCursor = &nc
+		var nextOffset *int64
+		if int64(len(tweets)) > *limit {
+			tweets = tweets[:*limit]
+			no := *offset + *limit
+			nextOffset = &no
 		}
 
 		resp := domain.GetTweetsResponse{
 			Tweets: tweets,
 			Pagination: domain.Pagination{
-				Count:      int64(len(tweets)),
-				Cursor:     *cursor,
-				NextCursor: nextCursor,
+				Offset:     *offset,
+				Limit:      *limit,
+				NextOffset: nextOffset,
 			},
 		}
 

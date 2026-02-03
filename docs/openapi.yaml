@@ -330,7 +330,7 @@ paths:
       tags:
         - tweets
       parameters:
-        - name: count
+        - name: limit
           in: query
           description: Number of tweets to return (default 20, max 100)
           required: false
@@ -339,12 +339,14 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
-        - name: cursor
+        - name: offset
           in: query
-          description: Cursor for relative pagination. Use next_cursor or previous_cursor from the response to navigate pages.
+          description: Number of tweets to skip (default 0)
           required: false
           schema:
             type: integer
+            minimum: 0
+            default: 0
         - name: max_id
           in: query
           description: Returns tweets with an ID less than or equal to the specified ID (absolute position)
@@ -586,23 +588,23 @@ components:
     Pagination:
       type: object
       properties:
-        count:
+        offset:
           type: integer
-          description: Number of items returned in the current page
-          example: 20
-        cursor:
+          description: Offset specified in this request
+          example: 0
+        limit:
           type: integer
-          description: Cursor specified in this request
+          description: Maximum number of items to return per page
           example: 20
-        next_cursor:
+        next_offset:
           type: integer
           nullable: true
-          description: Cursor to use for the next page. If null, this is the last page.
-          example: 40
+          description: Offset to use for the next page. If null, this is the last page.
+          example: 20
       required:
-        - count
-        - cursor
-        - next_cursor
+        - offset
+        - limit
+        - next_offset
 
     UsersResponse:
       type: object

@@ -82,15 +82,15 @@ type PostTweetResponse struct {
 }
 
 type GetTweetsRequest struct {
-	Count  *int   `json:"count"`
-	Cursor *int64 `json:"cursor"`
+	Limit  *int   `json:"limit"`
+	Offset *int64 `json:"offset"`
 	MaxID  string `json:"max_id"`
 }
 
 type Pagination struct {
-	Count      int64  `json:"count"`
-	Cursor     int64  `json:"cursor"`
-	NextCursor *int64 `json:"next_cursor"`
+	Offset     int64  `json:"offset"`
+	Limit      int64  `json:"limit"`
+	NextOffset *int64 `json:"next_offset"`
 }
 
 type GetTweetsResponse struct {

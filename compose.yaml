@@ -10,6 +10,29 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydatabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://user:password@db:5432/mydatabase
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPU_LIMIT:-1.0}"
+          memory: "${API_MEM_LIMIT:-256M}"
+        reservations:
+          cpus: "${API_CPU_RESERVE:-0.5}"
+          memory: "${API_MEM_RESERVE:-128M}"
 
   swagger-ui:
     image: swaggerapi/swagger-ui

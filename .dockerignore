@@ -1,0 +1,6 @@
+.git/
+perf/
+benchmark_results/
+scripts/
+social-media-scaling
+*.md

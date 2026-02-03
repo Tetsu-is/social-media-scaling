@@ -3,3 +3,6 @@ social-media-scaling
 
 # local claude setting
 .claude
+
+# node modules
+perf/node_modules/**

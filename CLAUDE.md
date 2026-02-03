@@ -48,8 +48,6 @@ Single-file Go microservice (`main.go`) with:
 - `docs/spec.md` - Project requirements and features
 - `docs/schema.md` - Database schema
 - `docs/openapi.yaml` - API endpoint specifications (Swagger UI on port 8081)
-- `docs/PERFORMANCE.md` - Performance optimization notes
-- `docs/BENCHMARK_GUIDE.md` - Benchmark testing guide
 
 ## File Map
 NOTE: please fix this File Map as you edit directories or files.
@@ -85,15 +83,10 @@ NOTE: please fix this File Map as you edit directories or files.
 ├── docs/
 │   ├── spec.md                     # プロジェクト仕様
 │   ├── schema.md                   # DB スキーマ設計書
-│   ├── openapi.yaml                # OpenAPI 3.0 仕様
-│   ├── PERFORMANCE.md              # パフォーマンス最適化メモ
-│   └── BENCHMARK_GUIDE.md          # ベンチマーク実行ガイド
+│   └── openapi.yaml                # OpenAPI 3.0 仕様
 │
-├── scripts/
-│   ├── benchmark_tweets.sh         # ベンチマーク実行スクリプト
-│   └── generate_test_data.go       # テストデータ生成
-│
-└── benchmark_results/              # ベンチマーク結果（日時別）
+└── scripts/
+    └── generate_test_data.go       # テストデータ生成
 ```
 
 

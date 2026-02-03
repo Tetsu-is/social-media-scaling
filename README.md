@@ -42,6 +42,17 @@ go run main.go
 - API: http://localhost:8080
 - Swagger UI: http://localhost:8081
 
+## Load Testing (k6)
+
+Load tests are written in [k6](https://k6.io/) and live in the `perf/` directory. To run them locally, install k6 first:
+
+```bash
+# macOS
+brew install k6
+```
+
+See the scripts in `perf/` for usage.
+
 ## Documentation
 
 - [API Specification](docs/spec.md)

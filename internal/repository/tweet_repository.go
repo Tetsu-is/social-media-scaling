@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/Tetsu-is/social-media-scaling/domain"
+	"github.com/Tetsu-is/social-media-scaling/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"

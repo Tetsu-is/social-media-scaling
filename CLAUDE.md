@@ -61,18 +61,17 @@ NOTE: please fix this File Map as you edit directories or files.
 ├── Makefile                        # ビルド・実行のタスク定義
 ├── go.mod / go.sum                 # Go モジュール定義・依存関係ロック
 │
-├── auth/
-│   └── jwt.go                      # JWT認証のロジック
-│
-├── domain/
-│   └── models.go                   # ドメインモデル（構造体・型定義）
-│
-├── repository/
-│   ├── errors.go                   # リポジトリ共通エラー定義
-│   ├── user_repository.go          # ユーザー関連のDB操作
-│   ├── tweet_repository.go         # ツイート関連のDB操作
-│   ├── follow_repository.go        # フォロー関連のDB操作
-│   └── feed_repository.go          # フィード関連のDB操作
+├── internal/
+│   ├── auth/
+│   │   └── jwt.go                  # JWT認証のロジック
+│   ├── domain/
+│   │   └── models.go               # ドメインモデル（構造体・型定義）
+│   └── repository/
+│       ├── errors.go               # リポジトリ共通エラー定義
+│       ├── user_repository.go      # ユーザー関連のDB操作
+│       ├── tweet_repository.go     # ツイート関連のDB操作
+│       ├── follow_repository.go    # フォロー関連のDB操作
+│       └── feed_repository.go      # フィード関連のDB操作
 │
 ├── db/
 │   └── migrations/                 # マイグレーション（000001〜000006）

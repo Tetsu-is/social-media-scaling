@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Tetsu-is/social-media-scaling/auth"
-	"github.com/Tetsu-is/social-media-scaling/domain"
-	"github.com/Tetsu-is/social-media-scaling/repository"
+	"github.com/Tetsu-is/social-media-scaling/internal/auth"
+	"github.com/Tetsu-is/social-media-scaling/internal/domain"
+	"github.com/Tetsu-is/social-media-scaling/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/golang-jwt/jwt/v5"

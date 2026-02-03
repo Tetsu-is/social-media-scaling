@@ -47,4 +47,59 @@ Single-file Go microservice (`main.go`) with:
 
 - `docs/spec.md` - Project requirements and features
 - `docs/schema.md` - Database schema
-- `openapi.yaml` - API endpoint specifications (Swagger UI on port 8081)
+- `docs/openapi.yaml` - API endpoint specifications (Swagger UI on port 8081)
+- `docs/PERFORMANCE.md` - Performance optimization notes
+- `docs/BENCHMARK_GUIDE.md` - Benchmark testing guide
+
+## File Map
+
+```
+.
+├── main.go                         # エントリポイント・ルーティング・ハンドラ
+├── compose.yaml                    # Docker Compose (PostgreSQL + Swagger UI)
+├── Makefile                        # ビルド・実行のタスク定義
+├── go.mod / go.sum                 # Go モジュール定義・依存関係ロック
+│
+├── auth/
+│   └── jwt.go                      # JWT認証のロジック
+│
+├── domain/
+│   └── models.go                   # ドメインモデル（構造体・型定義）
+│
+├── repository/
+│   ├── errors.go                   # リポジトリ共通エラー定義
+│   ├── user_repository.go          # ユーザー関連のDB操作
+│   ├── tweet_repository.go         # ツイート関連のDB操作
+│   ├── follow_repository.go        # フォロー関連のDB操作
+│   └── feed_repository.go          # フィード関連のDB操作
+│
+├── db/
+│   └── migrations/                 # マイグレーション（000001〜000006）
+│       ├── 000001  users テーブル
+│       ├── 000002  user_auth テーブル
+│       ├── 000003  tweets テーブル
+│       ├── 000004  シードデータ
+│       ├── 000005  follows テーブル
+│       └── 000006  フィード用インデックス
+│
+├── docs/
+│   ├── spec.md                     # プロジェクト仕様
+│   ├── schema.md                   # DB スキーマ設計書
+│   ├── openapi.yaml                # OpenAPI 3.0 仕様
+│   ├── PERFORMANCE.md              # パフォーマンス最適化メモ
+│   └── BENCHMARK_GUIDE.md          # ベンチマーク実行ガイド
+│
+├── scripts/
+│   ├── benchmark_tweets.sh         # ベンチマーク実行スクリプト
+│   └── generate_test_data.go       # テストデータ生成
+│
+└── benchmark_results/              # ベンチマーク結果（日時別）
+```
+
+
+## How to implement a new endpoint
+1. 2-3個の設計パターンを考案
+2. 既存APIとの設計の一貫性を保てる形で仕様を確定する
+3. docs/openapi.yamlに仕様を記述する
+4. 仕様にしたがってgoでAPIのエンドポイントを実装する
+5. 修正が生じた場合はopenapi.yamlが矛盾しないように修正する

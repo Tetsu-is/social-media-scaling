@@ -1,4 +1,4 @@
-.PHONY: migrate-up migrate-down migrate-clean
+.PHONY: migrate-up migrate-down migrate-clean 
 
 migrate-up:
 	migrate -database "postgres://user:password@localhost:5432/mydatabase?sslmode=disable" -path db/migrations up
@@ -8,3 +8,4 @@ migrate-down:
 
 migrate-clean:
 	migrate -database "postgres://user:password@localhost:5432/mydatabase?sslmode=disable" -path db/migrations drop -f
+

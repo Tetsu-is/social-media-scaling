@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
+	"os"
 	"strconv"
 	"strings"
 
@@ -583,6 +585,14 @@ func main() {
 		r.Delete("/users/{userID}/follow", unfollowHandler(followRepo))
 		r.Post("/tweets", postTweetHandler(tweetRepo))
 	})
+
+	// PPROF_ENABLED=1 で :6060 に pprof API を公開（ベンチマーク用）
+	if os.Getenv("PPROF_ENABLED") == "1" {
+		go func() {
+			log.Println("pprof listening on :6060")
+			http.ListenAndServe(":6060", nil)
+		}()
+	}
 
 	log.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", r)

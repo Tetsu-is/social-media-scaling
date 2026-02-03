@@ -17,7 +17,7 @@ func NewFeedRepository(conn *pgxpool.Pool) *FeedRepository {
 
 // GetFeedTweets はログインユーザーがフォローしているユーザーのツイートを取得する
 // Pull型ニュースフィード実装（OFFSET/LIMITベースページネーション）
-func (r *FeedRepository) GetFeedTweets(ctx context.Context, userID string, offset int64, count int64) ([]domain.TweetWithUser, error) {
+func (r *FeedRepository) GetFeedTweets(ctx context.Context, userID string, offset int64, limit int64) ([]domain.TweetWithUser, error) {
 	query := `
 		SELECT
 			t.id,
@@ -37,7 +37,7 @@ func (r *FeedRepository) GetFeedTweets(ctx context.Context, userID string, offse
 		ORDER BY t.created_at DESC, t.id DESC
 		LIMIT $2 OFFSET $3
 	`
-	rows, err := r.conn.Query(ctx, query, userID, count, offset)
+	rows, err := r.conn.Query(ctx, query, userID, limit, offset)
 
 	if err != nil {
 		return nil, err

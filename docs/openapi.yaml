@@ -127,14 +127,14 @@ paths:
   /users/me/feed:
     get:
       summary: Get news feed
-      description: Retrieve tweets from users that the authenticated user follows (pull-based news feed with cursor-based pagination)
+      description: Retrieve tweets from users that the authenticated user follows (pull-based news feed with offset-based pagination)
       operationId: getFeed
       tags:
         - feed
       security:
         - bearerAuth: []
       parameters:
-        - name: count
+        - name: limit
           in: query
           description: Number of tweets to return (default 20, max 100)
           required: false
@@ -143,14 +143,14 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
-        - name: cursor
+        - name: offset
           in: query
-          description: Cursor for pagination (timestamp). Omit for first page, use next_cursor from previous response for next page.
+          description: Number of tweets to skip (default 0)
           required: false
           schema:
-            type: string
-            format: date-time
-            example: "2024-01-15T10:30:00.123456Z"
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Feed retrieved successfully
@@ -562,28 +562,10 @@ components:
           items:
             $ref: '#/components/schemas/TweetWithUser'
         pagination:
-          $ref: '#/components/schemas/FeedPagination'
+          $ref: '#/components/schemas/Pagination'
       required:
         - tweets
         - pagination
-
-    FeedPagination:
-      type: object
-      description: Cursor-based pagination for feed
-      properties:
-        count:
-          type: integer
-          description: Number of items returned in the current page
-          example: 20
-        next_cursor:
-          type: string
-          format: date-time
-          nullable: true
-          description: Cursor to use for the next page (timestamp). If null, this is the last page.
-          example: "2024-01-15T10:30:00.123456Z"
-      required:
-        - count
-        - next_cursor
 
     Pagination:
       type: object

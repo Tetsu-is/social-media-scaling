@@ -494,26 +494,29 @@ func getFeedHandler(feedRepo *repository.FeedRepository) http.HandlerFunc {
 			return
 		}
 
-		count, _ := parseIntQuery(r, "count")
-		cursor, _ := parseIntQuery(r, "cursor")
+		limit, _ := parseIntQuery(r, "limit")
+		offset, _ := parseIntQuery(r, "offset")
 
-		if count == nil {
+		if limit == nil {
 			d := int64(20)
-			count = &d
+			limit = &d
 		}
-
-		if cursor == nil {
-			d := int64(-1)
-			cursor = &d
-		}
-
-		if *count < 1 || *count > 100 {
-			respondError(w, http.StatusBadRequest, "count must be between 1 and 100")
+		if *limit < 1 || *limit > 100 {
+			respondError(w, http.StatusBadRequest, "limit must be between 1 and 100")
 			return
 		}
 
-		// count + 1 件取得して次のページがあるか確認する
-		tweets, err := feedRepo.GetFeedTweets(ctx, userID, *cursor, *count+1)
+		if offset == nil {
+			d := int64(0)
+			offset = &d
+		}
+		if *offset < 0 {
+			respondError(w, http.StatusBadRequest, "offset must be 0 or greater")
+			return
+		}
+
+		// limit + 1 件取得して次のページがあるか確認する
+		tweets, err := feedRepo.GetFeedTweets(ctx, userID, *offset, *limit+1)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to fetch feed")
 			return
@@ -524,19 +527,19 @@ func getFeedHandler(feedRepo *repository.FeedRepository) http.HandlerFunc {
 		}
 
 		// 次のページがあるか確認
-		var nextCursor *int64
-		if int64(len(tweets)) > *count {
-			// count + 1 件取得できた場合は次のページがある
-			tweets = tweets[:*count] // 最初の count 件だけ返す
-			nc := *cursor + *count
-			nextCursor = &nc
+		var nextOffset *int64
+		if int64(len(tweets)) > *limit {
+			tweets = tweets[:*limit]
+			no := *offset + *limit
+			nextOffset = &no
 		}
 
 		resp := domain.GetFeedResponse{
 			Tweets: tweets,
-			Pagination: domain.FeedPagination{
-				Count:      int64(len(tweets)),
-				NextCursor: nextCursor,
+			Pagination: domain.Pagination{
+				Offset:     *offset,
+				Limit:      *limit,
+				NextOffset: nextOffset,
 			},
 		}
 

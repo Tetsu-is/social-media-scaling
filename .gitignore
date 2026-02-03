@@ -1,8 +1,6 @@
 # Binary
 social-media-scaling
-
-# local claude setting
-.claude
+generate_test_data
 
 # node modules
 perf/node_modules/**

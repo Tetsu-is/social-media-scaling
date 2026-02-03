@@ -186,7 +186,7 @@ func getUserByIDHandler(userRepo *repository.UserRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID := chi.URLParam(r, "userID")
+		userID := chi.URLParam(r, "id")
 		if userID == "" {
 			respondError(w, http.StatusBadRequest, "user id is required")
 			return
@@ -328,18 +328,9 @@ func postTweetHandler(tweetRepo *repository.TweetRepository) http.HandlerFunc {
 			return
 		}
 
-		resp := domain.PostTweetResponse{
-			ID:         tweet.ID,
-			UserID:     tweet.UserID,
-			Content:    tweet.Content,
-			LikesCount: tweet.LikesCount,
-			CreatedAt:  tweet.CreatedAt,
-			UpdatedAt:  tweet.UpdatedAt,
-		}
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(tweet)
 	}
 }
 
@@ -353,7 +344,7 @@ func followHandler(userRepo *repository.UserRepository, followRepo *repository.F
 			return
 		}
 
-		followeeID := chi.URLParam(r, "userID")
+		followeeID := chi.URLParam(r, "id")
 		if followeeID == "" {
 			respondError(w, http.StatusBadRequest, "user id is required")
 			return
@@ -394,7 +385,7 @@ func unfollowHandler(followRepo *repository.FollowRepository) http.HandlerFunc {
 			return
 		}
 
-		followeeID := chi.URLParam(r, "userID")
+		followeeID := chi.URLParam(r, "id")
 		if followeeID == "" {
 			respondError(w, http.StatusBadRequest, "user id is required")
 			return
@@ -414,7 +405,7 @@ func getFollowersHandler(userRepo *repository.UserRepository, followRepo *reposi
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID := chi.URLParam(r, "userID")
+		userID := chi.URLParam(r, "id")
 		if userID == "" {
 			respondError(w, http.StatusBadRequest, "user id is required")
 			return
@@ -451,7 +442,7 @@ func getFolloweesHandler(userRepo *repository.UserRepository, followRepo *reposi
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID := chi.URLParam(r, "userID")
+		userID := chi.URLParam(r, "id")
 		if userID == "" {
 			respondError(w, http.StatusBadRequest, "user id is required")
 			return
@@ -598,9 +589,9 @@ func main() {
 		})
 		r.Post("/auth/signup", signupHandler(userRepo))
 		r.Post("/auth/login", loginHandler(userRepo))
-		r.Get("/users/{userID}", getUserByIDHandler(userRepo))
-		r.Get("/users/{userID}/followers", getFollowersHandler(userRepo, followRepo))
-		r.Get("/users/{userID}/followees", getFolloweesHandler(userRepo, followRepo))
+		r.Get("/users/{id}", getUserByIDHandler(userRepo))
+		r.Get("/users/{id}/followers", getFollowersHandler(userRepo, followRepo))
+		r.Get("/users/{id}/followees", getFolloweesHandler(userRepo, followRepo))
 		r.Get("/tweets", getTweetsHandler(tweetRepo))
 	})
 
@@ -609,8 +600,8 @@ func main() {
 		r.Post("/auth/logout", logoutHandler())
 		r.Get("/users/me", getMeHandler(userRepo))
 		r.Get("/users/me/feed", getFeedHandler(feedRepo))
-		r.Put("/users/{userID}/follow", followHandler(userRepo, followRepo))
-		r.Delete("/users/{userID}/follow", unfollowHandler(followRepo))
+		r.Put("/users/{id}/follow", followHandler(userRepo, followRepo))
+		r.Delete("/users/{id}/follow", unfollowHandler(followRepo))
 		r.Post("/tweets", postTweetHandler(tweetRepo))
 	})
 

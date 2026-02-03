@@ -52,6 +52,7 @@ Single-file Go microservice (`main.go`) with:
 - `docs/BENCHMARK_GUIDE.md` - Benchmark testing guide
 
 ## File Map
+NOTE: please fix this File Map as you edit directories or files.
 
 ```
 .
@@ -103,3 +104,5 @@ Single-file Go microservice (`main.go`) with:
 3. docs/openapi.yamlに仕様を記述する
 4. 仕様にしたがってgoでAPIのエンドポイントを実装する
 5. 修正が生じた場合はopenapi.yamlが矛盾しないように修正する
+
+

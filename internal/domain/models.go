@@ -106,3 +106,14 @@ type GetFeedResponse struct {
 	Tweets     []TweetWithUser `json:"tweets"`
 	Pagination Pagination      `json:"pagination"`
 }
+
+type CursorPagination struct {
+	Cursor     *string `json:"cursor"`
+	Limit      int64   `json:"limit"`
+	NextCursor *string `json:"next_cursor"`
+}
+
+type GetUserTweetsResponse struct {
+	Tweets     []Tweet          `json:"tweets"`
+	Pagination CursorPagination `json:"pagination"`
+}

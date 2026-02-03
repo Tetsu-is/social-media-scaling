@@ -203,6 +203,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /users/{id}/tweets:
+    get:
+      summary: Get user's tweets
+      description: Retrieve a paginated list of tweets posted by the specified user (cursor-based pagination using UUID v7)
+      operationId: getUserTweets
+      tags:
+        - tweets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          description: Cursor (tweet ID) to fetch tweets older than. Omit to start from the newest.
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Number of tweets to return (default 20, max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of user's tweets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTweetsResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /users/{id}/follow:
     put:
       summary: Follow user
@@ -597,6 +647,43 @@ components:
             $ref: '#/components/schemas/User'
       required:
         - users
+
+    CursorPagination:
+      type: object
+      properties:
+        cursor:
+          type: string
+          format: uuid
+          nullable: true
+          description: Cursor value used in the current request. Null if not specified.
+          example: "0190a5e4-b890-7000-8000-000000000010"
+        limit:
+          type: integer
+          description: Maximum number of items to return per page
+          example: 20
+        next_cursor:
+          type: string
+          format: uuid
+          nullable: true
+          description: Cursor to use for the next page. Null if this is the last page.
+          example: "0190a5e4-b890-7000-8000-000000000005"
+      required:
+        - cursor
+        - limit
+        - next_cursor
+
+    UserTweetsResponse:
+      type: object
+      properties:
+        tweets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tweet'
+        pagination:
+          $ref: '#/components/schemas/CursorPagination'
+      required:
+        - tweets
+        - pagination
 
     Error:
       type: object

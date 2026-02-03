@@ -484,6 +484,79 @@ func getFolloweesHandler(userRepo *repository.UserRepository, followRepo *reposi
 	}
 }
 
+func getUserTweetsHandler(userRepo *repository.UserRepository, tweetRepo *repository.TweetRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID := chi.URLParam(r, "userID")
+		if userID == "" {
+			respondError(w, http.StatusBadRequest, "user id is required")
+			return
+		}
+
+		exists, err := userRepo.CheckUserExists(ctx, userID)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		if !exists {
+			respondError(w, http.StatusNotFound, "user not found")
+			return
+		}
+
+		limit, _ := parseIntQuery(r, "limit")
+		if limit == nil {
+			d := int64(20)
+			limit = &d
+		}
+		if *limit < 1 || *limit > 100 {
+			respondError(w, http.StatusBadRequest, "limit must be between 1 and 100")
+			return
+		}
+
+		var cursor *string
+		if c := r.URL.Query().Get("cursor"); c != "" {
+			if _, err := uuid.Parse(c); err != nil {
+				respondError(w, http.StatusBadRequest, "invalid cursor")
+				return
+			}
+			cursor = &c
+		}
+
+		// limit + 1 件取得して次のページがあるか確認する
+		tweets, err := tweetRepo.GetTweetsByUserID(ctx, userID, cursor, *limit+1)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to fetch tweets")
+			return
+		}
+
+		if tweets == nil {
+			tweets = []domain.Tweet{}
+		}
+
+		// 次のページがあるか確認
+		var nextCursor *string
+		if int64(len(tweets)) > *limit {
+			tweets = tweets[:*limit]
+			lastID := tweets[len(tweets)-1].ID
+			nextCursor = &lastID
+		}
+
+		resp := domain.GetUserTweetsResponse{
+			Tweets: tweets,
+			Pagination: domain.CursorPagination{
+				Cursor:     cursor,
+				Limit:      *limit,
+				NextCursor: nextCursor,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 func getFeedHandler(feedRepo *repository.FeedRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -599,6 +672,7 @@ func main() {
 		r.Post("/auth/signup", signupHandler(userRepo))
 		r.Post("/auth/login", loginHandler(userRepo))
 		r.Get("/users/{userID}", getUserByIDHandler(userRepo))
+		r.Get("/users/{userID}/tweets", getUserTweetsHandler(userRepo, tweetRepo))
 		r.Get("/users/{userID}/followers", getFollowersHandler(userRepo, followRepo))
 		r.Get("/users/{userID}/followees", getFolloweesHandler(userRepo, followRepo))
 		r.Get("/tweets", getTweetsHandler(tweetRepo))

@@ -67,3 +67,40 @@ func (r *TweetRepository) GetTweetsByMaxID(ctx context.Context, maxID uuid.UUID,
 	// 未実装
 	return nil, ErrNotImplemented
 }
+
+// GetTweetsByUserID はユーザーIDで投稿したツイートを取得する（cursor-based ページネーション）
+// cursor が nil の場合は最新から取得し、指定された場合は cursor より古いツイートを取得する
+func (r *TweetRepository) GetTweetsByUserID(ctx context.Context, userID string, cursor *string, limit int64) ([]domain.Tweet, error) {
+	query := "SELECT id, user_id, content, likes_count, created_at, updated_at FROM tweets WHERE user_id = $1"
+	args := []any{userID}
+
+	if cursor != nil {
+		query += " AND id < $2 ORDER BY id DESC LIMIT $3"
+		args = append(args, *cursor, limit)
+	} else {
+		query += " ORDER BY id DESC LIMIT $2"
+		args = append(args, limit)
+	}
+
+	rows, err := r.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tweets []domain.Tweet
+	for rows.Next() {
+		var tweet domain.Tweet
+		err := rows.Scan(&tweet.ID, &tweet.UserID, &tweet.Content, &tweet.LikesCount, &tweet.CreatedAt, &tweet.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		tweets = append(tweets, tweet)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tweets, nil
+}
